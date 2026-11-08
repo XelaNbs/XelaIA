@@ -32,7 +32,8 @@ LANGUE = "fr-FR"
 MOT_ACTIVATION = "jarvis"
 MOTS_SORTIE = ("au revoir", "arrête-toi", "arrete-toi", "éteins-toi", "eteins-toi")
 MAX_TOURS_HISTORIQUE = 10  # nombre d'échanges gardés en mémoire
-MAX_TOKENS = 600
+MAX_TOKENS = 2000  # inclut la réflexion interne du modèle
+EFFORT = os.getenv("JARVIS_EFFORT", "low")  # low = rapide et économique, suffisant pour discuter
 
 PROMPT_SYSTEME = (
     "Tu es JARVIS, l'assistant vocal personnel de l'utilisateur, sur son MacBook. "
@@ -150,6 +151,7 @@ class Cerveau:
                 model=MODELE,
                 max_tokens=MAX_TOKENS,
                 system=PROMPT_SYSTEME,
+                output_config={"effort": EFFORT},
                 messages=self.historique,
             )
             texte = "".join(
