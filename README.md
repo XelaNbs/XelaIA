@@ -20,7 +20,7 @@ Tu parles à JARVIS. Il comprend ce que tu veux, fait travailler les agents spé
 | Cerveau et recherche web | **API Claude** (`claude-sonnet-5-5`) | paiement à l'usage, **à part** des abonnements Claude.ai / ChatGPT |
 | Voix | **ElevenLabs** (voix au choix), avec edge-tts gratuit en secours | offre gratuite limitée, puis abonnement |
 | Écoute | SpeechRecognition | gratuit |
-| CV et lettres | python-docx (fichiers Word) | gratuit |
+| CV et lettres | ReportLab (PDF, mise en page de ton CV) | gratuit |
 
 Mode 100 % gratuit possible : `JARVIS_MOTEUR=ollama` (modèle local, sans recherche web).
 
@@ -36,15 +36,24 @@ git checkout claude/exciting-goldberg-ivamp4
 Le script demande ta confirmation à chaque étape. Il peut aussi programmer la **routine du matin**.
 
 Ensuite :
-1. **`.env`** : colle ta clé API Claude (https://console.anthropic.com, rubrique « API Keys », ajoute quelques euros de crédit).
-2. **`profil.md`** : colle ton CV complet, ta ville, ta mobilité, ton salaire souhaité. Les agents n'inventent rien : tout ce qu'ils écrivent vient de là. Ce fichier ne quitte pas ton Mac.
-3. **`cibles.md`** : les postes visés, par priorité, et les postes à éviter. Tu peux le modifier quand tu veux.
-4. **Voix ElevenLabs** (facultatif) :
+1. **Ta clé Claude** : crée-la sur https://console.anthropic.com (API Keys) et ajoute quelques euros de crédit. Dans le Terminal, depuis le dossier XelaIA, tape `open -a TextEdit .env` puis colle-la après `ANTHROPIC_API_KEY=` et enregistre (⌘S).
+2. **Ton CV** : dépose ton CV actuel en PDF dans le dossier XelaIA, sous le nom **`mon_cv.pdf`**. Au premier lancement, Jarvis le lit et le transcrit une fois pour toutes. Chaque CV adapté part de là, avec la même mise en page. Si tu changes ton CV, remplace le fichier et Jarvis le relit tout seul.
+3. **`cibles.md`** : les postes visés, par priorité, la localisation et les postes à éviter. Tu peux le modifier quand tu veux.
+4. **`profil.md`** (facultatif) : ce qui n'est pas dans ton CV (salaire souhaité, disponibilité…). Pars de `profil.exemple.md`.
+5. **Voix ElevenLabs** (facultatif) :
    - copie ta clé (Profil → API Keys) dans `ELEVENLABS_API_KEY` ;
    - dans la Voice Library, ajoute à « My Voices » une voix qui te plaît (cherche « butler » ou « British » pour un vrai style Jarvis, ou une voix française grave) ;
    - lance `python jarvis.py --voix` et copie l'ID choisi dans `ELEVENLABS_VOICE_ID`.
 
+Ton CV, ton profil, tes dossiers et ta clé ne sont jamais envoyés sur GitHub.
+
 ## Lancement
+
+Le plus simple : **double-clique sur `Jarvis.command`** dans le Finder pour lui parler à la voix, ou sur **`Jarvis-clavier.command`** pour lui écrire. La première fois, macOS peut bloquer le fichier : clic droit → Ouvrir → Ouvrir.
+
+À la voix, commence chaque phrase par « Jarvis » : « Jarvis, … ». Ou dis juste « Jarvis », attends « Oui ? » et parle.
+
+Depuis le Terminal :
 
 ```bash
 source .venv/bin/activate
@@ -67,12 +76,10 @@ Les missions tournent **en arrière-plan** : tu continues à parler à Jarvis, p
 
 | Dossier | Contenu |
 |---|---|
-| `candidatures/<date>_<entreprise>_<poste>/` | `CV_….docx` adapté à l'offre, `Lettre_motivation_….docx`, `Fiche_offre.md` (lien pour postuler, contact, arguments d'entretien, message LinkedIn, mail) |
+| `candidatures/<date>_<entreprise>_<poste>/` | `CV_<Nom>_<Entreprise>.pdf` adapté à l'offre (dans la langue de l'offre), `LM_<Nom>_<Entreprise>.pdf`, `Fiche_offre.md` (lien pour postuler, contact, arguments d'entretien, message LinkedIn, mail) |
 | `contenus/` | plans de publications TikTok / Instagram prêts à tourner |
 | `donnees/offres.json` | suivi des offres et des statuts |
 | `donnees/journal.md` | historique des missions |
-
-Pour envoyer en PDF : ouvre le .docx, puis Fichier → Exporter en PDF.
 
 ## Ajouter un agent
 
@@ -95,5 +102,6 @@ Crée `agents/mon_agent.py` avec une fonction `outils(ia)` qui renvoie une liste
 - **Micro muet** : Réglages Système → Confidentialité et sécurité → Micro → active Terminal.
 - **« ANTHROPIC_API_KEY manquante »** : l'abonnement Claude.ai ne suffit pas, il faut une clé sur console.anthropic.com.
 - **Voix trop lente** : mets `ELEVENLABS_MODELE=eleven_flash_v2_5` dans `.env`.
+- **« Jarvis.command » ne peut pas être ouvert** : clic droit → Ouvrir → Ouvrir (une seule fois).
 - **La routine ne s'est pas lancée** : regarde `donnees/routine.log`.
 - **`CERTIFICATE_VERIFY_FAILED`** : lance `/Applications/Python 3.x/Install Certificates.command`.

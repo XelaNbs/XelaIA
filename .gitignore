@@ -5,6 +5,8 @@ __pycache__/
 .DS_Store
 # Données personnelles : jamais sur GitHub
 profil.md
+mon_cv.pdf
+mon_cv/
 donnees/
 candidatures/
 contenus/

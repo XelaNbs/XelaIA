@@ -11,10 +11,12 @@ qui travaillent en arrière-plan, puis il te rend compte.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 from datetime import datetime
+from pathlib import Path
 
 from agents import Outil, charger_outils
 from agents.memoire import lire_memoire, lire_profil
@@ -73,6 +75,17 @@ def nettoyer(texte: str) -> str:
     return texte.strip()
 
 
+def extraire_objet_json(texte: str) -> dict:
+    """Lit un objet JSON dans une réponse, même entourée de texte."""
+    try:
+        return json.loads(texte)
+    except json.JSONDecodeError:
+        debut, fin = texte.find("{"), texte.rfind("}")
+        if debut == -1 or fin == -1:
+            raise ValueError("pas de JSON dans la réponse")
+        return json.loads(texte[debut:fin + 1])
+
+
 def executer(index: dict[str, Outil], nom: str, args: dict) -> str:
     outil = index.get(nom)
     if outil is None:
@@ -115,14 +128,18 @@ class MoteurClaude:
         self.effort = os.getenv("JARVIS_EFFORT", "low")
         self.web = True
 
-    def _creer(self, messages, outils=(), systeme="", effort=None, max_tokens=8000):
+    def _creer(self, messages, outils=(), systeme="", effort=None, max_tokens=8000,
+               schema=None):
+        output_config = {"effort": effort or self.effort}
+        if schema:  # sorties structurées : la réponse respecte exactement ce schéma JSON
+            output_config["format"] = {"type": "json_schema", "schema": schema}
         rep = self.client.beta.messages.create(
             model=self.modele,
             max_tokens=max_tokens,
             system=systeme,
             messages=messages,
             tools=list(outils),
-            output_config={"effort": effort or self.effort},
+            output_config=output_config,
             betas=["server-side-fallback-2026-07-01"],
             extra_body={"fallbacks": "default"},
         )
@@ -139,6 +156,29 @@ class MoteurClaude:
         if rep.stop_reason == "refusal":
             raise RuntimeError("le modèle a refusé cette rédaction")
         return self._texte(rep)
+
+    def completer_json(self, consigne: str, schema: dict, systeme: str = "",
+                       pdf: Path | None = None, effort: str = "medium") -> dict:
+        """Une rédaction qui renvoie des données structurées (CV, lettre…)."""
+        import anthropic
+
+        contenu = [{"type": "text", "text": consigne}]
+        if pdf:
+            donnees = base64.standard_b64encode(Path(pdf).read_bytes()).decode()
+            contenu.insert(0, {"type": "document", "source": {
+                "type": "base64", "media_type": "application/pdf", "data": donnees}})
+        messages = [{"role": "user", "content": contenu}]
+        try:
+            rep = self._creer(messages, systeme=systeme, effort=effort, max_tokens=16000,
+                              schema=schema)
+        except anthropic.BadRequestError as e:  # repli : JSON demandé dans la consigne
+            print(f"⚠️  Sortie structurée refusée ({e}), repli sur JSON libre.")
+            rep = self._creer(messages, effort=effort, max_tokens=16000,
+                              systeme=systeme + "\nRéponds uniquement avec un objet JSON valide "
+                              f"respectant ce schéma : {json.dumps(schema)}")
+        if rep.stop_reason == "refusal":
+            raise RuntimeError("le modèle a refusé cette rédaction")
+        return extraire_objet_json(self._texte(rep))
 
     def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 15) -> str:
         """Un agent autonome qui cherche et lit sur le web, puis rend un texte final."""
@@ -204,6 +244,18 @@ class MoteurOllama:
         messages.append({"role": "user", "content": consigne})
         return nettoyer(self._chat(messages).content or "")
 
+    def completer_json(self, consigne: str, schema: dict, systeme: str = "",
+                       pdf: Path | None = None, effort: str = "") -> dict:
+        if pdf:
+            from pypdf import PdfReader
+
+            texte = "\n".join(p.extract_text() or "" for p in PdfReader(str(pdf)).pages)
+            consigne = f"CONTENU DU PDF :\n{texte}\n\n{consigne}"
+        messages = [{"role": "system", "content": systeme}] if systeme else []
+        messages.append({"role": "user", "content": consigne})
+        rep = self.client.chat(model=self.modele, messages=messages, format=schema, think=False)
+        return extraire_objet_json(rep.message.content or "{}")
+
     def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 0) -> str:
         raise RuntimeError("la recherche web nécessite le moteur claude (JARVIS_MOTEUR=claude)")
 
@@ -234,6 +286,12 @@ def creer_moteur():
 class Cerveau:
     def __init__(self) -> None:
         self.moteur, nom = creer_moteur()
+        from agents.emploi import cv_maitre
+
+        try:
+            cv_maitre(self.moteur)  # lit ton CV d'origine (une seule fois, puis cache)
+        except Exception as e:
+            print(f"⚠️  Lecture du CV impossible : {e}")
         self.outils = charger_outils(self.moteur)
         self.historique: list[dict] = []
         print(f"🧠 Moteur : {nom} — outils : " + ", ".join(o.nom for o in self.outils))

@@ -2,6 +2,9 @@
 
 Objectif : évoluer vers des postes commerciaux B2B, idéalement dans la tech, le SaaS ou la fintech. Les points forts du candidat sont la gestion de portefeuille B2B, la fidélisation, l'upsell, la prospection, la négociation et la relation client long terme. Son point faible principal : une expérience SaaS pure encore limitée. Il faut privilégier les entreprises qui acceptent un profil en transition vers le SaaS.
 
+## Localisation
+Paris et Île-de-France, et à l'international : en priorité Lisbonne et le Portugal, Barcelone et l'Espagne (candidat francophone, anglais C1, portugais et espagnol B2). Les V.I.E. sont bienvenus. Les offres internationales peuvent être en anglais, en portugais ou en espagnol : le CV et la lettre sont alors rédigés dans la langue de l'offre.
+
 ## Priorité 1
 - **Account Manager** : très bon fit (portefeuille B2B, fidélisation, upsell). À éviter si l'offre exige plusieurs années de SaaS pur ou des grands comptes très complexes.
 - **Account Executive** : bon fit pour évoluer vers le closing et le full-cycle. Le manque d'expérience SaaS est le principal frein.

@@ -4,9 +4,10 @@ Agents emploi : chercheur d'offres, rédacteur de CV et de lettres.
 1. L'agent chercheur parcourt le web (Welcome to the Jungle, LinkedIn, Indeed,
    APEC, HelloWork, pages carrières…) et sélectionne les offres qui collent
    au profil (profil.md) et aux cibles (cibles.md).
-2. Pour chaque offre retenue, l'agent rédacteur prépare un dossier complet :
-   CV adapté, lettre de motivation, fiche de l'offre (lien, contact, arguments,
-   points à préparer, message court pour le recruteur).
+2. Pour chaque offre retenue, l'agent rédacteur prépare un dossier complet, à
+   partir de ton CV d'origine (mon_cv.pdf) : CV adapté en PDF (même mise en
+   page), lettre de motivation en PDF, fiche de l'offre (lien, contact,
+   arguments, message court pour le recruteur).
 3. JARVIS te prévient : tu n'as plus qu'à postuler.
 
 Les dossiers sont dans candidatures/, le suivi dans donnees/offres.json.
@@ -19,7 +20,6 @@ import re
 from datetime import date, datetime
 
 from . import DONNEES, RACINE, Outil, missions
-from .documents import balisage_vers_docx
 from .memoire import lire_cibles, lire_memoire, lire_profil
 
 FICHIER_OFFRES = DONNEES / "offres.json"
@@ -57,10 +57,11 @@ def _extraire_json(texte: str):
         return []
 
 
-def _verifier_profil() -> str | None:
+def _verifier_profil(ia) -> str | None:
+    cv_maitre(ia)
     if not lire_profil():
-        return ("Le fichier profil.md est vide. Colle ton CV dedans pour que les agents "
-                "puissent travailler.")
+        return ("Je n'ai pas ton CV. Dépose-le en PDF dans le dossier de JARVIS sous le nom "
+                "mon_cv.pdf, et je m'occupe du reste.")
     return None
 
 
@@ -115,14 +116,94 @@ chaque élément avec ces clés :
 
 
 # --------------------------------------------------------------------------- #
-# Agent rédacteur
+# CV d'origine : mon_cv.pdf (ou le premier PDF du dossier mon_cv/)
+# --------------------------------------------------------------------------- #
+
+def _chaine(description: str) -> dict:
+    return {"type": "string", "description": description}
+
+
+def _objet(proprietes: dict) -> dict:
+    return {"type": "object", "properties": proprietes,
+            "required": list(proprietes), "additionalProperties": False}
+
+
+def _liste(element: dict) -> dict:
+    return {"type": "array", "items": element}
+
+
+SCHEMA_CV = _objet({
+    "langue": {"type": "string", "enum": ["fr", "en", "es", "pt"]},
+    "nom": _chaine("Prénom NOM"),
+    "titre": _chaine("Intitulé affiché sous le nom"),
+    "accroche": _chaine("3 lignes ; **gras** autorisé sur les chiffres clés"),
+    "contact": _objet({k: _chaine(k) for k in
+                       ("email", "telephone", "localisation", "linkedin", "permis")}),
+    "langues": _liste(_objet({"langue": _chaine("langue"), "niveau": _chaine("niveau")})),
+    "competences": _liste(_chaine("compétence")),
+    "informatique": _liste(_objet({"categorie": _chaine("catégorie"),
+                                   "outils": _chaine("outils, séparés par des virgules")})),
+    "centres_interet": _liste(_chaine("centre d'intérêt")),
+    "experiences": _liste(_objet({
+        "poste": _chaine("intitulé du poste"), "dates": _chaine("dates"),
+        "entreprise": _chaine("entreprise"), "lieu": _chaine("ville, précision"),
+        "puces": _liste(_chaine("réalisation ; **gras** sur les chiffres clés")),
+    })),
+    "formation": _liste(_objet({"diplome": _chaine("diplôme"), "dates": _chaine("dates"),
+                                "ecole": _chaine("école"), "lieu": _chaine("ville")})),
+})
+
+SCHEMA_LETTRE = _objet({
+    "langue": {"type": "string", "enum": ["fr", "en", "es", "pt"]},
+    "destinataire": _liste(_chaine("ligne d'adresse : entreprise, service ou personne, ville")),
+    "ville_date": _chaine("ex : Paris, le 13 novembre 2026"),
+    "objet": _chaine("objet de la lettre"),
+    "salutation": _chaine("ex : Madame, Monsieur,"),
+    "paragraphes": _liste(_chaine("paragraphe")),
+    "formule_finale": _chaine("formule de politesse"),
+})
+
+FICHIER_CV_MAITRE = DONNEES / "cv_maitre.json"
+
+
+def _source_cv():
+    if (RACINE / "mon_cv.pdf").exists():
+        return RACINE / "mon_cv.pdf"
+    dossier = RACINE / "mon_cv"
+    pdfs = sorted(dossier.glob("*.pdf"), key=lambda p: p.stat().st_mtime) if dossier.exists() else []
+    return pdfs[-1] if pdfs else None
+
+
+def cv_maitre(ia) -> dict | None:
+    """Transcrit ton CV PDF en données (une fois ; refait si le PDF change)."""
+    source = _source_cv()
+    if FICHIER_CV_MAITRE.exists() and (
+            source is None or FICHIER_CV_MAITRE.stat().st_mtime >= source.stat().st_mtime):
+        return json.loads(FICHIER_CV_MAITRE.read_text(encoding="utf-8"))
+    if source is None:
+        return None
+    print(f"📄 Lecture de ton CV ({source.name})…")
+    cv = ia.completer_json(
+        "Retranscris ce CV fidèlement et intégralement dans le format demandé : chaque "
+        "expérience avec toutes ses puces, chaque chiffre, chaque formation, compétence, "
+        "outil, langue et centre d'intérêt, sans rien résumer ni inventer. Mets en **gras** "
+        "les mêmes éléments que dans l'original.",
+        SCHEMA_CV, "Tu es un assistant de saisie extrêmement précis.", pdf=source)
+    FICHIER_CV_MAITRE.write_text(json.dumps(cv, ensure_ascii=False, indent=1), encoding="utf-8")
+    print("✅ CV d'origine enregistré.")
+    return cv
+
+
+# --------------------------------------------------------------------------- #
+# Agent rédacteur : CV adapté + lettre en PDF, fiche de candidature
 # --------------------------------------------------------------------------- #
 
 SYSTEME_REDACTEUR = """Tu es un expert du recrutement commercial (sales, account \
-management, business development) en France, qui écrit des CV et des lettres qui \
-décrochent des entretiens. Style : concret, chiffré, sobre, sans formules creuses. \
-Tu n'inventes JAMAIS une expérience, un diplôme, un chiffre ou une compétence absents \
-du profil : tu reformules, sélectionnes et ordonnes ce qui existe."""
+management, business development) en France et à l'international, qui adapte des CV et \
+écrit des lettres qui décrochent des entretiens. Style : concret, chiffré, sobre, sans \
+formules creuses. Tu n'inventes JAMAIS une expérience, un diplôme, un chiffre, un outil ou \
+une compétence absents du CV d'origine : tu reformules, sélectionnes, ordonnes et traduis \
+ce qui existe."""
 
 
 def _consigne_offre(offre: dict) -> str:
@@ -131,48 +212,58 @@ def _consigne_offre(offre: dict) -> str:
 Lien : {offre.get('lien')}
 {offre.get('description', '')}
 
-PROFIL ET CV DU CANDIDAT :
+PROFIL DU CANDIDAT :
 {lire_profil()}
 
 INFORMATIONS COMPLÉMENTAIRES :
 {lire_memoire() or "aucune"}"""
 
 
-def _nom_dossier(offre: dict) -> str:
-    base = f"{date.today():%Y-%m-%d}_{offre['entreprise']}_{offre['titre']}"
-    return re.sub(r"[^\w-]+", "_", base)[:90].strip("_")
+def _nom_fichier(texte: str) -> str:
+    return re.sub(r"[^\w-]+", "_", texte).strip("_")[:60]
+
+
+CONSIGNE_CV = """Adapte le CV d'origine du candidat à cette offre.
+- Rédige dans la langue de l'offre (langue = fr, en, es ou pt) ; traduis si besoin.
+- Même structure et mêmes informations de contact que le CV d'origine.
+- titre : intitulé proche du poste visé, crédible pour ce candidat.
+- accroche : 3 lignes ciblées sur l'offre, avec ses résultats les plus parlants.
+- experiences : toutes les expériences pertinentes, dans l'ordre chronologique inverse, avec \
+les dates et entreprises exactes ; reformule et réordonne les puces pour faire ressortir ce \
+que l'offre demande (mots-clés de l'offre) ; garde les chiffres exacts en **gras**.
+- competences : 6 à 8, choisies et formulées selon l'offre, toutes justifiées par le parcours.
+- Le CV doit tenir sur UNE page : 3 à 4 puces pour les postes récents, 1 à 2 pour les anciens."""
 
 
 def preparer_dossier(ia, offre: dict) -> str:
-    dossier = DOSSIER_CANDIDATURES / _nom_dossier(offre)
+    from .documents import generer_cv_pdf, generer_lettre_pdf
+
     contexte = _consigne_offre(offre)
+    nom_offre = _nom_fichier(f"{offre['entreprise']}_{offre['titre']}")
+    dossier = DOSSIER_CANDIDATURES / f"{date.today():%Y-%m-%d}_{nom_offre}"
 
-    cv = ia.completer(f"""{contexte}
+    cv = ia.completer_json(f"{contexte}\n\n{CONSIGNE_CV}", SCHEMA_CV, SYSTEME_REDACTEUR)
+    nom = _nom_fichier(cv.get("nom", "Candidat").title().replace(" ", "-"))
+    entreprise = _nom_fichier(offre["entreprise"])
+    chemin_cv = dossier / f"CV_{nom}_{entreprise}.pdf"
+    if generer_cv_pdf(cv, chemin_cv) > 1:  # trop long : on demande une version plus courte
+        cv = ia.completer_json(
+            f"{contexte}\n\n{CONSIGNE_CV}\n\nVoici ta première version, qui dépasse une page. "
+            f"Raccourcis-la (moins de puces, puces plus courtes, accroche plus brève) :\n"
+            f"{json.dumps(cv, ensure_ascii=False)}", SCHEMA_CV, SYSTEME_REDACTEUR)
+        generer_cv_pdf(cv, chemin_cv)
 
-Rédige le CV du candidat, adapté à cette offre (une page, compatible avec les logiciels \
-de tri des recruteurs). Titre du CV = intitulé proche du poste visé. Mets en avant les \
-expériences, résultats chiffrés et mots-clés qui correspondent à l'offre.
-Utilise exactement ce balisage, sans rien d'autre avant ni après :
-# Prénom Nom
-Titre du CV
-Téléphone | Email | Ville | LinkedIn (seulement ceux présents dans le profil)
-## Profil
-(3 lignes d'accroche ciblées sur l'offre)
-## Expériences professionnelles
-### Poste — Entreprise, Ville (dates)
-- réalisation concrète et chiffrée
-## Formation
-## Compétences
-## Langues
-(ajoute ## Centres d'intérêt seulement si utile au poste)""", SYSTEME_REDACTEUR)
+    lettre = ia.completer_json(f"""{contexte}
 
-    lettre = ia.completer(f"""{contexte}
-
-Rédige la lettre de motivation (250 à 330 mots) : une accroche liée à l'entreprise ou au \
-poste, deux paragraphes reliant 2 ou 3 réalisations du profil aux besoins de l'offre, une \
-conclusion qui propose un échange. Commence par le bloc coordonnées du candidat, puis \
-l'objet. Texte simple, paragraphes séparés par une ligne vide, pas de titre Markdown.""",
-                          SYSTEME_REDACTEUR)
+Rédige la lettre de motivation, dans la même langue que le CV adapté ({cv.get('langue', 'fr')}).
+- ville_date : ville du candidat et date du jour ({date.today():%d/%m/%Y}), écrite en toutes lettres.
+- destinataire : l'entreprise (et le contact s'il est connu : {offre.get('contact') or 'inconnu'}).
+- 4 paragraphes, 250 à 330 mots au total : une accroche liée à l'entreprise ou au poste ; \
+deux paragraphes reliant 2 ou 3 réalisations chiffrées du CV aux besoins de l'offre ; une \
+conclusion qui propose un échange. Si le profil a un manque évident par rapport à l'offre, \
+assume-le en une phrase et montre comment il le compense (comme le candidat le fait \
+naturellement dans ses candidatures).""", SCHEMA_LETTRE, SYSTEME_REDACTEUR)
+    generer_lettre_pdf(lettre, cv, dossier / f"LM_{nom}_{entreprise}.pdf")
 
     fiche = ia.completer(f"""{contexte}
 
@@ -182,20 +273,15 @@ Prépare la fiche de candidature, en Markdown, avec ces sections :
 ## Points faibles possibles et réponses
 ## Questions à poser au recruteur
 ## Message LinkedIn au recruteur (300 caractères maximum)
-## Mail de candidature (si la candidature se fait par mail : objet + 100 mots)""",
+## Mail de candidature (objet + 100 à 150 mots, prêt à copier si la candidature se fait par mail)""",
                          SYSTEME_REDACTEUR)
-
-    prenom_nom = (cv.splitlines()[0].lstrip("# ").strip() if cv else "Candidat") or "Candidat"
-    nom_fichier = re.sub(r"[^\w-]+", "_", prenom_nom)
-    balisage_vers_docx(cv, dossier / f"CV_{nom_fichier}.docx")
-    balisage_vers_docx(lettre, dossier / f"Lettre_motivation_{nom_fichier}.docx", lettre=True)
     contact = offre.get("contact") or "non trouvé"
     (dossier / "Fiche_offre.md").write_text(
         f"# {offre['titre']} — {offre['entreprise']}\n\n"
         f"- **Lien pour postuler** : {offre.get('lien')}\n"
         f"- **Lieu / contrat / salaire** : {offre.get('lieu')} / {offre.get('contrat')} / "
         f"{offre.get('salaire') or 'non précisé'}\n"
-        f"- **Contact** : {json.dumps(contact, ensure_ascii=False) if not isinstance(contact, str) else contact}\n"
+        f"- **Contact** : {contact if isinstance(contact, str) else json.dumps(contact, ensure_ascii=False)}\n"
         f"- **Score** : {offre.get('score', '?')}/100 — priorité {offre.get('priorite', '?')}\n\n"
         f"{fiche}\n\n---\n## Offre\n{offre.get('description', '')}\n",
         encoding="utf-8",
@@ -222,7 +308,7 @@ def _enregistrer(offre: dict, statut: str, dossier: str | None = None) -> None:
 # --------------------------------------------------------------------------- #
 
 def mission_emploi(ia, nombre: int = 5, focus: str = "") -> str:
-    if (erreur := _verifier_profil()):
+    if (erreur := _verifier_profil(ia)):
         return erreur
     offres = chercher_offres(ia, nombre, focus)
     if not offres:
@@ -242,7 +328,7 @@ def mission_emploi(ia, nombre: int = 5, focus: str = "") -> str:
 
 def mission_offre_precise(ia, offre_texte: str) -> str:
     """Prépare un dossier pour une offre donnée par l'utilisateur (lien ou description)."""
-    if (erreur := _verifier_profil()):
+    if (erreur := _verifier_profil(ia)):
         return erreur
     texte = ia.rechercher_web(
         f"""Voici une offre d'emploi (lien ou texte) : {offre_texte}

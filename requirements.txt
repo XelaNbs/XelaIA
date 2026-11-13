@@ -1,5 +1,6 @@
 anthropic>=0.40        # cerveau (API Claude)
-python-docx>=1.1       # CV et lettres au format Word
+reportlab>=4.0         # CV et lettres en PDF
+pypdf>=4.0             # lecture de PDF (mode local)
 SpeechRecognition>=3.10
 pyaudio>=0.2.14
 edge-tts>=6.1          # voix gratuite (secours si pas d'ElevenLabs)

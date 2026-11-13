@@ -60,7 +60,7 @@ source .venv/bin/activate
 echo "✅ venv actif : $(python --version)"
 
 # 5. Dépendances Python (dans le venv uniquement)
-if confirmer "Installer les modules Python (anthropic, python-docx, SpeechRecognition, pyaudio, edge-tts, pygame) dans .venv ?"; then
+if confirmer "Installer les modules Python (anthropic, reportlab, SpeechRecognition, pyaudio, edge-tts, pygame) dans .venv ?"; then
   pip install --upgrade pip
   PA="$(brew --prefix portaudio)"
   CFLAGS="-I$PA/include" LDFLAGS="-L$PA/lib" pip install -r requirements.txt
@@ -74,9 +74,8 @@ if [ ! -f .env ]; then
   cp .env.example .env
   echo "📝 Fichier .env créé : colle ta clé ANTHROPIC_API_KEY (et ElevenLabs si tu veux)."
 fi
-if [ ! -f profil.md ]; then
-  cp profil.exemple.md profil.md
-  echo "📝 Fichier profil.md créé : colle ton CV dedans pour que les agents te connaissent."
+if [ ! -f mon_cv.pdf ]; then
+  echo "📄 Dépose ton CV actuel en PDF dans ce dossier sous le nom mon_cv.pdf."
 fi
 
 # 7. Routine du matin (optionnelle) : launchd lance « jarvis.py --routine » chaque jour

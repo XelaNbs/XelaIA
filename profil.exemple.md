@@ -1,16 +1,10 @@
-# Mon profil (copie ce fichier en profil.md et remplis-le)
+# Notes de profil (facultatif)
 
-Nom : Prénom Nom
-Email : ...
-Téléphone : ...
-Ville / mobilité : Paris, télétravail OK, mobilité Île-de-France
+Ton CV vient de mon_cv.pdf. Ce fichier sert seulement à ajouter ce qui n'y est pas.
+Copie-le en profil.md et écris par exemple :
 
-## Poste recherché
-Intitulés visés, type de contrat (CDI, freelance…), salaire souhaité, disponibilité.
-
-## CV
-Colle ici ton CV en texte : expériences (poste, entreprise, dates, réalisations chiffrées),
-formations, compétences techniques, langues, projets (dont ton appli).
-
-## Ce que je ne veux pas
-Secteurs, entreprises ou types de postes à éviter.
+- Salaire souhaité : ...
+- Disponibilité : ...
+- Télétravail : ...
+- Entreprises à éviter : ...
+- Infos à mettre en avant : ...
