@@ -275,6 +275,9 @@ class MoteurClaudeCode:
     def completer_json(self, consigne: str, schema: dict, systeme: str = "",
                        pdf: Path | None = None, effort: str = "") -> dict:
         outils = ""
+        is_cv='experiences' in schema.get('properties',{})
+        if is_cv:
+            consigne += "\nConserve exactement les noms d'employeurs, d'écoles, les dates et chiffres du CV d'origine. N'ajoute aucun chiffre, même pour décrire une durée."
         if pdf:
             consigne = f"Lis le fichier PDF {Path(pdf).resolve()} avec l'outil Read.\n\n{consigne}"
             outils = "Read"
@@ -282,7 +285,11 @@ class MoteurClaudeCode:
             f"{systeme}\n\n{consigne}\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans "
             f"texte autour, respectant ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}",
             outils)
-        return extraire_objet_json(texte)
+        value=extraire_objet_json(texte)
+        if is_cv:
+            from integration.document_validation import validate_cv_numbers
+            validate_cv_numbers(value,pdf)
+        return value
 
     def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 15) -> str:
         return self._lancer(
