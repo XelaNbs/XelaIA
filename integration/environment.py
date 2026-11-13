@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import shutil
+MODEL='claude-sonnet-5-5'
 
 def subscription_environment(source=None):
     source=dict(os.environ if source is None else source)
@@ -8,7 +9,10 @@ def subscription_environment(source=None):
     entries=[str(Path.home()/'.local/bin'),'/opt/homebrew/bin','/usr/local/bin','/usr/bin','/bin']
     result['PATH']=os.pathsep.join(dict.fromkeys(entries+source.get('PATH','').split(os.pathsep)))
     result['JARVIS_MOTEUR']='claude-code'
-    result['JARVIS_MODELE_CC']='sonnet'
+    result['JARVIS_MODELE_CC']=MODEL
+    result['ANTHROPIC_DEFAULT_SONNET_MODEL']=MODEL
+    result['ANTHROPIC_DEFAULT_HAIKU_MODEL']=MODEL
+    result['CLAUDE_CODE_SUBAGENT_MODEL']=MODEL
     return result
 
 def claude_binary():

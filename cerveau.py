@@ -239,7 +239,8 @@ class MoteurClaudeCode:
                 "   curl -fsSL https://claude.ai/install.sh | bash\n"
                 "   puis tape « claude » une fois pour te connecter avec ton compte Claude."
             )
-        self.modele = os.getenv("JARVIS_MODELE_CC", "sonnet")
+        from integration.environment import MODEL
+        self.modele = MODEL
         self.web = True
 
     def _lancer(self, consigne: str, outils: str = "", delai: int = 900) -> str:
@@ -251,6 +252,7 @@ class MoteurClaudeCode:
                     "--restricted", "--setting-sources", "",
                     "--tools", outils, "--disallowedTools", self.INTERDITS + ",mcp__*",
                     "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']
+        commande += ['--settings',json.dumps({'model':self.modele,'availableModels':[self.modele],'enforceAvailableModels':True})]
         if outils:
             commande += ["--allowedTools", outils]
         res = subprocess.run(commande, input=consigne, capture_output=True, text=True,
