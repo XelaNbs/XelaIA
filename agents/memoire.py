@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from . import DONNEES, RACINE, Outil
+from . import stockage
 
 FICHIER_MEMOIRE = DONNEES / "memoire.md"
 FICHIER_PROFIL = RACINE / "profil.md"
@@ -18,9 +19,11 @@ FICHIER_CV_MAITRE = DONNEES / "cv_maitre.json"
 def lire_profil() -> str:
     """Ton CV d'origine (transcrit depuis mon_cv.pdf) + tes notes de profil.md."""
     morceaux = []
-    if FICHIER_CV_MAITRE.exists():
+    cv = stockage.charger_cv()
+    if cv is not None:
+        import json
         morceaux.append("CV d'origine (données exactes, ne rien inventer au-delà) :\n"
-                        + FICHIER_CV_MAITRE.read_text(encoding="utf-8"))
+                        + json.dumps(cv, ensure_ascii=False))
     if FICHIER_PROFIL.exists():
         morceaux.append("Notes de l'utilisateur :\n"
                         + FICHIER_PROFIL.read_text(encoding="utf-8")[:MAX_CARACTERES])
@@ -34,27 +37,22 @@ def lire_cibles() -> str:
 
 
 def lire_memoire() -> str:
-    if not FICHIER_MEMOIRE.exists():
-        return ""
-    return FICHIER_MEMOIRE.read_text(encoding="utf-8")[-MAX_CARACTERES:]
+    return stockage.lire_memoire(MAX_CARACTERES)
 
 
 def memoriser(information: str) -> str:
     information = information.strip()
     if not information:
         return "Rien à mémoriser."
-    with FICHIER_MEMOIRE.open("a", encoding="utf-8") as f:
-        f.write(f"- ({date.today():%d/%m/%Y}) {information}\n")
+    stockage.memoriser(information, f"{date.today():%d/%m/%Y}")
     return "Mémorisé."
 
 
 def oublier(mot_cle: str) -> str:
-    if not FICHIER_MEMOIRE.exists():
+    if not stockage.lire_memoire():
         return "La mémoire est vide."
-    lignes = FICHIER_MEMOIRE.read_text(encoding="utf-8").splitlines(keepends=True)
-    gardees = [l for l in lignes if mot_cle.lower() not in l.lower()]
-    FICHIER_MEMOIRE.write_text("".join(gardees), encoding="utf-8")
-    return f"{len(lignes) - len(gardees)} souvenir(s) effacé(s)."
+    count = stockage.oublier(mot_cle)
+    return f"{count} souvenir(s) effacé(s)."
 
 
 def outils(ia) -> list[Outil]:

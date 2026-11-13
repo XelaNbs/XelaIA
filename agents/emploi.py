@@ -21,6 +21,7 @@ from datetime import date, datetime
 
 from . import DONNEES, RACINE, Outil, missions
 from .memoire import lire_cibles, lire_memoire, lire_profil
+from . import stockage
 
 FICHIER_OFFRES = DONNEES / "offres.json"
 DOSSIER_CANDIDATURES = RACINE / "candidatures"
@@ -33,13 +34,11 @@ STATUTS = ("trouvée", "dossier prêt", "postulée", "entretien", "refusée", "�
 # --------------------------------------------------------------------------- #
 
 def _charger() -> dict[str, dict]:
-    if FICHIER_OFFRES.exists():
-        return json.loads(FICHIER_OFFRES.read_text(encoding="utf-8"))
-    return {}
+    return stockage.charger_offres()
 
 
 def _sauver(offres: dict[str, dict]) -> None:
-    FICHIER_OFFRES.write_text(json.dumps(offres, ensure_ascii=False, indent=1), encoding="utf-8")
+    stockage.sauver_offres(offres)
 
 
 def _cle(offre: dict) -> str:
@@ -177,9 +176,9 @@ def _source_cv():
 def cv_maitre(ia) -> dict | None:
     """Transcrit ton CV PDF en données (une fois ; refait si le PDF change)."""
     source = _source_cv()
-    if FICHIER_CV_MAITRE.exists() and (
-            source is None or FICHIER_CV_MAITRE.stat().st_mtime >= source.stat().st_mtime):
-        return json.loads(FICHIER_CV_MAITRE.read_text(encoding="utf-8"))
+    cache = stockage.charger_cv(source)
+    if cache is not None:
+        return cache
     if source is None:
         return None
     print(f"📄 Lecture de ton CV ({source.name})…")
@@ -189,7 +188,7 @@ def cv_maitre(ia) -> dict | None:
         "outil, langue et centre d'intérêt, sans rien résumer ni inventer. Mets en **gras** "
         "les mêmes éléments que dans l'original.",
         SCHEMA_CV, "Tu es un assistant de saisie extrêmement précis.", pdf=source)
-    FICHIER_CV_MAITRE.write_text(json.dumps(cv, ensure_ascii=False, indent=1), encoding="utf-8")
+    stockage.sauver_cv(cv, source)
     print("✅ CV d'origine enregistré.")
     return cv
 

@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Callable
 
 from . import DONNEES, Outil
+from . import stockage
 
 RAPPORTS: "queue.Queue[str]" = queue.Queue()
 JOURNAL = DONNEES / "journal.md"
@@ -34,8 +35,7 @@ def notifier_mac(titre: str, texte: str) -> None:
 
 
 def journaliser(texte: str) -> None:
-    with JOURNAL.open("a", encoding="utf-8") as f:
-        f.write(f"\n## {datetime.now():%d/%m/%Y %H:%M}\n{texte}\n")
+    stockage.journaliser(texte)
 
 
 def executer_mission(nom: str, fonction: Callable[[], str]) -> str:
