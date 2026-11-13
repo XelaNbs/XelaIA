@@ -34,6 +34,7 @@ def connexion(write=False):
         CREATE TABLE IF NOT EXISTS engine_turns(id INTEGER PRIMARY KEY, role TEXT, content TEXT, created REAL);
         CREATE TABLE IF NOT EXISTS engine_reports(id INTEGER PRIMARY KEY, content TEXT, created REAL, delivered INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS engine_calls(id INTEGER PRIMARY KEY, kind TEXT, result TEXT, created REAL);
+        CREATE TABLE IF NOT EXISTS engine_artifacts(path TEXT PRIMARY KEY, valid INTEGER NOT NULL, report TEXT NOT NULL, checked REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS engine_tasks(id TEXT PRIMARY KEY, kind TEXT, payload TEXT, state TEXT, result TEXT, error TEXT, created REAL, updated REAL, attempts INTEGER DEFAULT 0, dedupe TEXT UNIQUE);
         ''')
         if write:c.execute('BEGIN IMMEDIATE')
