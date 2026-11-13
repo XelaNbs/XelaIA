@@ -50,28 +50,6 @@ else
   exit 1
 fi
 
-# 3 bis. Ollama : le cerveau local gratuit
-MODELE_LOCAL="${JARVIS_MODELE_LOCAL:-qwen3:8b}"
-if ! command -v ollama >/dev/null; then
-  if confirmer "Installer Ollama (cerveau IA local et gratuit) avec Homebrew ?"; then
-    brew install ollama
-  fi
-fi
-if command -v ollama >/dev/null; then
-  if ! ollama list >/dev/null 2>&1; then
-    if confirmer "Démarrer Ollama en arrière-plan (et à chaque démarrage du Mac) ?"; then
-      brew services start ollama
-      sleep 3
-    fi
-  fi
-  if ! ollama list 2>/dev/null | grep -q "^${MODELE_LOCAL}"; then
-    if confirmer "Télécharger le modèle ${MODELE_LOCAL} (environ 5 Go) ?"; then
-      ollama pull "$MODELE_LOCAL"
-    fi
-  fi
-  echo "✅ Ollama prêt"
-fi
-
 # 4. Environnement virtuel
 if [ ! -d .venv ]; then
   echo "Création de l'environnement virtuel .venv…"
@@ -82,7 +60,7 @@ source .venv/bin/activate
 echo "✅ venv actif : $(python --version)"
 
 # 5. Dépendances Python (dans le venv uniquement)
-if confirmer "Installer les modules Python (ollama, anthropic, SpeechRecognition, pyaudio, edge-tts, pygame) dans .venv ?"; then
+if confirmer "Installer les modules Python (anthropic, python-docx, SpeechRecognition, pyaudio, edge-tts, pygame) dans .venv ?"; then
   pip install --upgrade pip
   PA="$(brew --prefix portaudio)"
   CFLAGS="-I$PA/include" LDFLAGS="-L$PA/lib" pip install -r requirements.txt
@@ -94,11 +72,42 @@ fi
 # 6. Clé API
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "📝 Fichier .env créé (moteur gratuit Ollama par défaut)."
+  echo "📝 Fichier .env créé : colle ta clé ANTHROPIC_API_KEY (et ElevenLabs si tu veux)."
 fi
 if [ ! -f profil.md ]; then
   cp profil.exemple.md profil.md
   echo "📝 Fichier profil.md créé : colle ton CV dedans pour que les agents te connaissent."
+fi
+
+# 7. Routine du matin (optionnelle) : launchd lance « jarvis.py --routine » chaque jour
+PLIST="$HOME/Library/LaunchAgents/com.jarvis.routine.plist"
+HEURE="${JARVIS_ROUTINE_HEURE:-8}"
+if [ ! -f "$PLIST" ] && confirmer "Programmer la routine emploi chaque matin à ${HEURE}h (recherche + dossiers prêts) ?"; then
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.jarvis.routine</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$PWD/.venv/bin/python</string>
+    <string>$PWD/jarvis.py</string>
+    <string>--routine</string>
+  </array>
+  <key>WorkingDirectory</key><string>$PWD</string>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>$HEURE</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>$PWD/donnees/routine.log</string>
+  <key>StandardErrorPath</key><string>$PWD/donnees/routine.log</string>
+</dict>
+</plist>
+PLIST
+  mkdir -p donnees
+  launchctl load "$PLIST"
+  echo "✅ Routine programmée (si le Mac dort à ${HEURE}h, elle se lance à son réveil)."
+  echo "   Pour l'arrêter : launchctl unload \"$PLIST\" && rm \"$PLIST\""
 fi
 
 echo

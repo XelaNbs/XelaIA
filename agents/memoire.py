@@ -8,6 +8,7 @@ from . import DONNEES, RACINE, Outil
 
 FICHIER_MEMOIRE = DONNEES / "memoire.md"
 FICHIER_PROFIL = RACINE / "profil.md"
+FICHIER_CIBLES = RACINE / "cibles.md"
 MAX_CARACTERES = 6000  # pour ne pas saturer un petit modèle local
 
 
@@ -15,6 +16,12 @@ def lire_profil() -> str:
     if not FICHIER_PROFIL.exists():
         return ""
     return FICHIER_PROFIL.read_text(encoding="utf-8")[:MAX_CARACTERES]
+
+
+def lire_cibles() -> str:
+    if not FICHIER_CIBLES.exists():
+        return ""
+    return FICHIER_CIBLES.read_text(encoding="utf-8")
 
 
 def lire_memoire() -> str:
@@ -41,7 +48,7 @@ def oublier(mot_cle: str) -> str:
     return f"{len(lignes) - len(gardees)} souvenir(s) effacé(s)."
 
 
-def outils(completer) -> list[Outil]:
+def outils(ia) -> list[Outil]:
     return [
         Outil(
             "memoriser",

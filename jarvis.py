@@ -2,13 +2,16 @@
 """
 JARVIS — assistant vocal en français.
 
-Écoute le micro, se déclenche sur le mot « Jarvis », envoie la demande au
-cerveau (Ollama local gratuit, ou API Claude) qui pilote les agents, et répond à voix haute avec edge-tts.
+Écoute le micro, se déclenche sur le mot « Jarvis », confie la demande au
+cerveau (API Claude) qui pilote l'équipe d'agents, et répond à voix haute
+(ElevenLabs, ou edge-tts gratuit en secours).
 
 Usage :
     python jarvis.py            # mode vocal (micro + haut-parleurs)
     python jarvis.py --texte    # mode clavier (pour tester sans micro)
     python jarvis.py --micros   # liste les micros disponibles
+    python jarvis.py --voix     # liste tes voix ElevenLabs
+    python jarvis.py --routine  # routine du matin (offres + dossiers), sans intervention
 """
 
 from __future__ import annotations
@@ -70,24 +73,58 @@ def extraire_commande(transcription: str) -> str | None:
 
 
 # --------------------------------------------------------------------------- #
-# Voix (edge-tts + pygame)
+# Voix : ElevenLabs (si une clé est configurée), sinon edge-tts (gratuit)
 # --------------------------------------------------------------------------- #
 
+URL_ELEVENLABS = "https://api.elevenlabs.io/v1"
+
+
 class Voix:
-    def __init__(self, voix: str | None = None, muet: bool = False) -> None:
-        self.voix = voix or os.getenv("JARVIS_VOIX", VOIX)
+    def __init__(self, muet: bool = False) -> None:
         self.muet = muet
+        self.voix_edge = os.getenv("JARVIS_VOIX", VOIX)
+        self.cle_eleven = os.getenv("ELEVENLABS_API_KEY", "").strip()
+        self.voix_eleven = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+        self.modele_eleven = os.getenv("ELEVENLABS_MODELE", "eleven_multilingual_v2")
+        moteur = "ElevenLabs" if self.cle_eleven and self.voix_eleven else "edge-tts"
+        print(f"🔊 Voix : {moteur}")
         if not muet:
+            os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
             import pygame  # import tardif : pas nécessaire en mode muet
 
-            os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
             pygame.mixer.init()
             self._pygame = pygame
 
-    async def _generer(self, texte: str, chemin: str) -> None:
+    def _elevenlabs(self, texte: str, chemin: str) -> None:
+        import json
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"{URL_ELEVENLABS}/text-to-speech/{self.voix_eleven}"
+            "?output_format=mp3_44100_128",
+            data=json.dumps({
+                "text": texte,
+                "model_id": self.modele_eleven,
+                "voice_settings": {"stability": 0.45, "similarity_boost": 0.8, "style": 0.2},
+            }).encode(),
+            headers={"xi-api-key": self.cle_eleven, "Content-Type": "application/json",
+                     "Accept": "audio/mpeg"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as r, open(chemin, "wb") as f:
+            f.write(r.read())
+
+    def _edge(self, texte: str, chemin: str) -> None:
         import edge_tts
 
-        await edge_tts.Communicate(texte, self.voix).save(chemin)
+        asyncio.run(edge_tts.Communicate(texte, self.voix_edge).save(chemin))
+
+    def _generer(self, texte: str, chemin: str) -> None:
+        if self.cle_eleven and self.voix_eleven:
+            try:
+                return self._elevenlabs(texte, chemin)
+            except Exception as e:  # quota épuisé, réseau… : on bascule sur edge-tts
+                print(f"⚠️  ElevenLabs indisponible ({e}), voix de secours.")
+        self._edge(texte, chemin)
 
     def dire(self, texte: str) -> None:
         print(f"🤖 JARVIS : {texte}")
@@ -96,19 +133,35 @@ class Voix:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             chemin = f.name
         try:
-            asyncio.run(self._generer(texte, chemin))
+            self._generer(texte, chemin)
             self._pygame.mixer.music.load(chemin)
             self._pygame.mixer.music.play()
             while self._pygame.mixer.music.get_busy():
                 time.sleep(0.05)
             self._pygame.mixer.music.unload()
-        except Exception as e:  # réseau coupé, etc. : on garde au moins le texte
+        except Exception as e:  # on garde au moins le texte
             print(f"⚠️  Synthèse vocale impossible : {e}")
         finally:
             try:
                 os.remove(chemin)
             except OSError:
                 pass
+
+
+def lister_voix_elevenlabs() -> None:
+    import json
+    import urllib.request
+
+    cle = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not cle:
+        sys.exit("❌ Ajoute ELEVENLABS_API_KEY dans .env d'abord.")
+    req = urllib.request.Request(f"{URL_ELEVENLABS}/voices", headers={"xi-api-key": cle})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        voix = json.load(r).get("voices", [])
+    print("Voix disponibles dans ton compte ElevenLabs (copie l'ID dans ELEVENLABS_VOICE_ID) :")
+    for v in voix:
+        labels = ", ".join(f"{k}: {val}" for k, val in (v.get("labels") or {}).items())
+        print(f"  {v['voice_id']}  {v['name']:<25} {labels}")
 
 
 # --------------------------------------------------------------------------- #
@@ -164,13 +217,23 @@ def veut_quitter(texte: str) -> bool:
     return any(normaliser(m) in norm for m in MOTS_SORTIE)
 
 
+def annoncer_rapports(voix: Voix, cerveau) -> None:
+    """Lit à voix haute les rapports des missions terminées."""
+    from agents.missions import rapports_en_attente
+
+    for rapport in rapports_en_attente():
+        cerveau.noter_rapport(rapport)
+        voix.dire("Rapport de mission. " + rapport)
+
+
 def boucle_vocale(voix: Voix, cerveau, index_micro: int | None) -> None:
     oreille = Oreille(index_micro)
-    voix.dire("Bonjour, je suis JARVIS. Dites Jarvis pour m'appeler.")
+    voix.dire("Bonjour. JARVIS à ton service, et toute l'équipe est prête.")
 
     while True:
-        print("👂 En attente de « Jarvis »…")
-        entendu = oreille.ecouter(duree_max=8)
+        annoncer_rapports(voix, cerveau)
+        # Délai court pour pouvoir annoncer les rapports de mission entre deux écoutes.
+        entendu = oreille.ecouter(delai=4, duree_max=10)
         if not entendu:
             continue
         print(f"   (entendu : {entendu})")
@@ -181,42 +244,58 @@ def boucle_vocale(voix: Voix, cerveau, index_micro: int | None) -> None:
 
         if not commande:  # juste « Jarvis » → on attend la demande
             voix.dire("Oui ?")
-            commande = oreille.ecouter(delai=6, duree_max=20)
+            commande = oreille.ecouter(delai=6, duree_max=25)
             if not commande:
                 voix.dire("Je n'ai rien entendu.")
                 continue
 
-        print(f"🧑 Vous : {commande}")
+        print(f"🧑 Toi : {commande}")
         if veut_quitter(commande):
-            voix.dire("Au revoir, à bientôt.")
+            voix.dire("À plus tard. Je garde un œil sur tout.")
             return
         voix.dire(cerveau.repondre(commande))
 
 
 def boucle_texte(voix: Voix, cerveau) -> None:
-    print("Mode texte — tape ta demande (ou « au revoir » pour quitter).")
+    print("Mode texte — tape ta demande (Entrée vide = voir les rapports, « au revoir » pour quitter).")
     while True:
+        annoncer_rapports(voix, cerveau)
         try:
-            demande = input("🧑 Vous : ").strip()
+            demande = input("🧑 Toi : ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return
         if not demande:
             continue
         if veut_quitter(demande):
-            voix.dire("Au revoir, à bientôt.")
+            voix.dire("À plus tard. Je garde un œil sur tout.")
             return
         voix.dire(cerveau.repondre(demande))
 
 
-def main() -> None:
-    from cerveau import Cerveau
+def routine(muet: bool) -> None:
+    """Routine du matin : recherche d'offres + dossiers, sans intervention."""
+    from agents.emploi import mission_emploi
+    from agents.missions import executer_mission
+    from cerveau import creer_moteur
 
+    moteur, _ = creer_moteur()
+    nombre = int(os.getenv("JARVIS_ROUTINE_OFFRES", "5"))
+    rapport = executer_mission("routine emploi", lambda: mission_emploi(moteur, nombre))
+    print(rapport)
+    if not muet:
+        Voix().dire("Bonjour. " + rapport)
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(description="JARVIS, assistant vocal.")
     parser.add_argument("--texte", action="store_true", help="saisie au clavier au lieu du micro")
     parser.add_argument("--muet", action="store_true", help="n'affiche que le texte, sans voix")
     parser.add_argument("--micro", type=int, default=None, help="index du micro à utiliser")
     parser.add_argument("--micros", action="store_true", help="liste les micros et quitte")
+    parser.add_argument("--voix", action="store_true", help="liste les voix ElevenLabs et quitte")
+    parser.add_argument("--routine", action="store_true",
+                        help="routine du matin : cherche les offres et prépare les dossiers")
     args = parser.parse_args()
 
     charger_env(Path(__file__).with_name(".env"))
@@ -225,6 +304,14 @@ def main() -> None:
     if args.micros:
         lister_micros()
         return
+    if args.voix:
+        lister_voix_elevenlabs()
+        return
+    if args.routine:
+        routine(args.muet)
+        return
+
+    from cerveau import Cerveau
 
     cerveau = Cerveau()
     voix = Voix(muet=args.muet)

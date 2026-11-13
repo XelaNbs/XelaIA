@@ -3,8 +3,9 @@ L'équipe d'agents de JARVIS.
 
 Chaque agent expose des « outils » (une fonction Python + une description) que
 le cerveau de JARVIS peut appeler tout seul. Pour ajouter un agent : créer un
-module dans ce dossier avec une fonction `outils(completer)` qui renvoie une
-liste d'Outil, puis l'ajouter à AGENTS ci-dessous.
+module dans ce dossier avec une fonction `outils(ia)` qui renvoie une liste
+d'Outil, puis l'ajouter à AGENTS ci-dessous. `ia` donne accès au modèle :
+ia.completer(consigne, systeme) et ia.rechercher_web(consigne, systeme).
 """
 
 from __future__ import annotations
@@ -43,8 +44,8 @@ class Outil:
         return {"name": self.nom, "description": self.description, "input_schema": self._schema()}
 
 
-def charger_outils(completer: Callable[[str, str], str]) -> list[Outil]:
-    from . import emploi, memoire
+def charger_outils(ia) -> list[Outil]:
+    from . import emploi, memoire, missions, reseaux
 
-    AGENTS = [memoire, emploi]
-    return [o for agent in AGENTS for o in agent.outils(completer)]
+    AGENTS = [memoire, emploi, reseaux, missions]
+    return [o for agent in AGENTS for o in agent.outils(ia)]

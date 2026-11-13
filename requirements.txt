@@ -1,6 +1,7 @@
-ollama>=0.5            # cerveau local gratuit (moteur par défaut)
-anthropic>=0.40        # cerveau Claude (optionnel, payant)
+anthropic>=0.40        # cerveau (API Claude)
+python-docx>=1.1       # CV et lettres au format Word
 SpeechRecognition>=3.10
 pyaudio>=0.2.14
-edge-tts>=6.1
+edge-tts>=6.1          # voix gratuite (secours si pas d'ElevenLabs)
 pygame>=2.6
+ollama>=0.5            # optionnel : cerveau local gratuit
