@@ -50,6 +50,20 @@ else
   exit 1
 fi
 
+# 3 bis. Claude Code : le cerveau de Jarvis, inclus dans ton abonnement Claude
+if ! command -v claude >/dev/null && [ ! -x "$HOME/.local/bin/claude" ]; then
+  echo "Jarvis utilise Claude Code, inclus dans ton abonnement Claude (Pro ou Max)."
+  if confirmer "Installer Claude Code (installateur officiel d'Anthropic) ?"; then
+    curl -fsSL https://claude.ai/install.sh | bash
+  fi
+fi
+export PATH="$HOME/.local/bin:$PATH"
+if command -v claude >/dev/null; then
+  echo "✅ Claude Code installé."
+  echo "   Si ce n'est pas déjà fait, tape « claude » dans le Terminal, connecte-toi avec"
+  echo "   ton compte Claude (celui de ton abonnement), puis tape /exit."
+fi
+
 # 4. Environnement virtuel
 if [ ! -d .venv ]; then
   echo "Création de l'environnement virtuel .venv…"
@@ -72,7 +86,7 @@ fi
 # 6. Clé API
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "📝 Fichier .env créé : colle ta clé ANTHROPIC_API_KEY (et ElevenLabs si tu veux)."
+  echo "📝 Fichier .env créé (cerveau : ton abonnement Claude via Claude Code)."
 fi
 if [ ! -f mon_cv.pdf ]; then
   echo "📄 Dépose ton CV actuel en PDF dans ce dossier sous le nom mon_cv.pdf."

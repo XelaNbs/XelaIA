@@ -17,12 +17,12 @@ Tu parles à JARVIS. Il comprend ce que tu veux, fait travailler les agents spé
 
 | Brique | Outil | Coût |
 |---|---|---|
-| Cerveau et recherche web | **API Claude** (`claude-sonnet-5-5`) | paiement à l'usage, **à part** des abonnements Claude.ai / ChatGPT |
+| Cerveau et recherche web | **Claude Code**, connecté à ton abonnement Claude Pro/Max | **inclus** dans ton abonnement (dans ses limites d'usage) |
 | Voix | **ElevenLabs** (voix au choix), avec edge-tts gratuit en secours | offre gratuite limitée, puis abonnement |
 | Écoute | SpeechRecognition | gratuit |
 | CV et lettres | ReportLab (PDF, mise en page de ton CV) | gratuit |
 
-Mode 100 % gratuit possible : `JARVIS_MOTEUR=ollama` (modèle local, sans recherche web).
+Autres moteurs possibles : `JARVIS_MOTEUR=api` (API Claude payante, plus rapide, clé sur console.anthropic.com) ou `JARVIS_MOTEUR=ollama` (modèle local gratuit, sans recherche web).
 
 ## Installation (MacBook, Apple Silicon)
 
@@ -36,7 +36,7 @@ git checkout claude/exciting-goldberg-ivamp4
 Le script demande ta confirmation à chaque étape. Il peut aussi programmer la **routine du matin**.
 
 Ensuite :
-1. **Ta clé Claude** : crée-la sur https://console.anthropic.com (API Keys) et ajoute quelques euros de crédit. Dans le Terminal, depuis le dossier XelaIA, tape `open -a TextEdit .env` puis colle-la après `ANTHROPIC_API_KEY=` et enregistre (⌘S).
+1. **Connecte Claude Code à ton abonnement** (une seule fois) : dans le Terminal, tape `claude`, choisis la connexion avec ton compte Claude (celui de ton abonnement Pro ou Max), valide dans le navigateur, puis tape `/exit`. Aucune clé, aucun compte console.
 2. **Ton CV** : dépose ton CV actuel en PDF dans le dossier XelaIA, sous le nom **`mon_cv.pdf`**. Au premier lancement, Jarvis le lit et le transcrit une fois pour toutes. Chaque CV adapté part de là, avec la même mise en page. Si tu changes ton CV, remplace le fichier et Jarvis le relit tout seul.
 3. **`cibles.md`** : les postes visés, par priorité, la localisation et les postes à éviter. Tu peux le modifier quand tu veux.
 4. **`profil.md`** (facultatif) : ce qui n'est pas dans ton CV (salaire souhaité, disponibilité…). Pars de `profil.exemple.md`.
@@ -87,7 +87,7 @@ Crée `agents/mon_agent.py` avec une fonction `outils(ia)` qui renvoie une liste
 
 ## Feuille de route
 
-- [x] Cerveau Claude avec recherche web (Ollama gratuit en option)
+- [x] Cerveau Claude via ton abonnement (Claude Code), avec recherche web ; API ou Ollama en option
 - [x] Voix ElevenLabs au choix
 - [x] Mémoire durable
 - [x] Équipe emploi : recherche sur tout le web, CV adapté, lettre, fiche d'entretien
@@ -100,7 +100,9 @@ Crée `agents/mon_agent.py` avec une fonction `outils(ia)` qui renvoie une liste
 ## Dépannage
 
 - **Micro muet** : Réglages Système → Confidentialité et sécurité → Micro → active Terminal.
-- **« ANTHROPIC_API_KEY manquante »** : l'abonnement Claude.ai ne suffit pas, il faut une clé sur console.anthropic.com.
+- **« Claude Code n'est pas installé »** : relance `./install.sh`, puis tape `claude` pour te connecter.
+- **« Claude Code : … limit »** : tu as atteint la limite d'usage de ton abonnement. Elle se recharge au bout de quelques heures.
+- **Réponses un peu lentes** : chaque réponse lance Claude Code (quelques secondes). C'est le prix de la gratuité ; le moteur `api` est plus rapide.
 - **Voix trop lente** : mets `ELEVENLABS_MODELE=eleven_flash_v2_5` dans `.env`.
 - **« Jarvis.command » ne peut pas être ouvert** : clic droit → Ouvrir → Ouvrir (une seule fois).
 - **La routine ne s'est pas lancée** : regarde `donnees/routine.log`.

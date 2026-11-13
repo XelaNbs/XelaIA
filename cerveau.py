@@ -2,8 +2,10 @@
 Cerveau de JARVIS : le modèle de langage et la boucle d'outils.
 
 Moteurs (variable JARVIS_MOTEUR dans .env) :
-  - "claude" (par défaut) : API Claude, fluide et intelligent, avec recherche web.
-  - "ollama"              : modèle local gratuit (sans recherche web).
+  - "claude-code" (par défaut) : ton abonnement Claude Pro/Max via Claude Code,
+                                 avec recherche web, sans aucun coût en plus.
+  - "api"                      : API Claude payante (clé console.anthropic.com).
+  - "ollama"                   : modèle local gratuit (sans recherche web).
 
 JARVIS ne fait pas tout lui-même : il délègue aux agents (dossier agents/),
 qui travaillent en arrière-plan, puis il te rend compte.
@@ -118,11 +120,8 @@ class MoteurClaude:
         import anthropic
 
         if not os.getenv("ANTHROPIC_API_KEY"):
-            raise SystemExit(
-                "❌ ANTHROPIC_API_KEY manquante dans .env.\n"
-                "   Les abonnements Claude.ai / ChatGPT n'incluent pas l'API : crée une clé "
-                "sur https://console.anthropic.com (paiement à l'usage)."
-            )
+            raise SystemExit("❌ Moteur « api » choisi mais ANTHROPIC_API_KEY manquante dans .env. "
+                             "Sans clé, mets JARVIS_MOTEUR=claude-code (ton abonnement).")
         self.client = anthropic.Anthropic()
         self.modele = os.getenv("JARVIS_MODELE", "claude-sonnet-5-5")
         self.effort = os.getenv("JARVIS_EFFORT", "low")
@@ -217,6 +216,108 @@ class MoteurClaude:
 
 
 # --------------------------------------------------------------------------- #
+# Moteur Claude Code : utilise TON abonnement Claude (Pro/Max), sans clé API
+# --------------------------------------------------------------------------- #
+
+class MoteurClaudeCode:
+    """
+    Passe par le programme `claude` (Claude Code) en mode non interactif.
+    Claude Code est inclus dans les abonnements Claude Pro et Max : aucun coût en
+    plus, mais les limites d'usage de l'abonnement s'appliquent.
+    """
+
+    INTERDITS = "Bash,Edit,Write,MultiEdit,NotebookEdit,Task"
+
+    def __init__(self) -> None:
+        import shutil
+
+        self.binaire = shutil.which("claude") or str(Path.home() / ".local/bin/claude")
+        if not Path(self.binaire).exists():
+            raise SystemExit(
+                "❌ Claude Code n'est pas installé. Lance ./install.sh, ou dans le Terminal :\n"
+                "   curl -fsSL https://claude.ai/install.sh | bash\n"
+                "   puis tape « claude » une fois pour te connecter avec ton compte Claude."
+            )
+        self.modele = os.getenv("JARVIS_MODELE_CC", "sonnet")
+        self.web = True
+
+    def _lancer(self, consigne: str, outils: str = "", delai: int = 900) -> str:
+        import subprocess
+
+        env = dict(os.environ)
+        env.pop("ANTHROPIC_API_KEY", None)  # garantit l'usage de l'abonnement, pas de l'API
+        commande = [self.binaire, "-p", "--output-format", "json", "--model", self.modele,
+                    "--disallowedTools", self.INTERDITS]
+        if outils:
+            commande += ["--allowedTools", outils]
+        res = subprocess.run(commande, input=consigne, capture_output=True, text=True,
+                             timeout=delai, env=env, cwd=str(Path(__file__).resolve().parent))
+        try:
+            donnees = json.loads(res.stdout)
+        except json.JSONDecodeError:
+            raise RuntimeError(f"Claude Code a échoué : {(res.stderr or res.stdout)[:300]}")
+        if donnees.get("is_error"):
+            raise RuntimeError(f"Claude Code : {str(donnees.get('result'))[:300]}")
+        return (donnees.get("result") or "").strip()
+
+    def completer(self, consigne: str, systeme: str = "", effort: str = "") -> str:
+        return self._lancer(f"{systeme}\n\n{consigne}".strip())
+
+    def completer_json(self, consigne: str, schema: dict, systeme: str = "",
+                       pdf: Path | None = None, effort: str = "") -> dict:
+        outils = ""
+        if pdf:
+            consigne = f"Lis le fichier PDF {Path(pdf).resolve()} avec l'outil Read.\n\n{consigne}"
+            outils = "Read"
+        texte = self._lancer(
+            f"{systeme}\n\n{consigne}\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans "
+            f"texte autour, respectant ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}",
+            outils)
+        return extraire_objet_json(texte)
+
+    def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 15) -> str:
+        return self._lancer(
+            f"{systeme}\n\nTu peux faire jusqu'à {max_recherches} recherches web (WebSearch) "
+            f"et lire des pages (WebFetch).\n\n{consigne}", "WebSearch,WebFetch")
+
+    def tour(self, historique: list[dict], outils: list[Outil]) -> str:
+        index = {o.nom: o for o in outils}
+        catalogue = "\n".join(
+            f"- {o.nom}({', '.join(o.parametres)}) : {o.description}" for o in outils)
+        conversation = "\n".join(
+            f"{'UTILISATEUR' if m['role'] == 'user' else 'JARVIS'} : {m['content']}"
+            for m in historique if isinstance(m.get("content"), str))
+        resultats = ""
+        for _ in range(MAX_ETAPES_OUTILS):
+            consigne = f"""{prompt_systeme()}
+
+TES OUTILS (tu les déclenches via le champ "actions") :
+{catalogue}
+Tu as aussi la recherche web (WebSearch, WebFetch) pour les questions d'actualité.
+
+CONVERSATION :
+{conversation}
+{("RÉSULTATS DE TES ACTIONS PRÉCÉDENTES :" + resultats) if resultats else ""}
+
+Réponds UNIQUEMENT avec un objet JSON, sans texte autour :
+{{"actions": [{{"outil": "nom", "arguments": {{...}}}}], "reponse": "ce que tu dis à l'utilisateur"}}
+Si tu as besoin du résultat d'une action avant de répondre, mets les actions et laisse \
+"reponse" vide : tu recevras les résultats. Sinon, "actions" est une liste vide."""
+            try:
+                sortie = extraire_objet_json(self._lancer(consigne, "WebSearch,WebFetch", 300))
+            except ValueError:
+                return "Désolé, je me suis embrouillé. Tu peux répéter ?"
+            actions = sortie.get("actions") or []
+            for a in actions:
+                nom = a.get("outil", "")
+                r = executer(index, nom, a.get("arguments") or {})
+                resultats += f"\n- {nom} → {r}"
+            if sortie.get("reponse") or not actions:
+                return nettoyer(sortie.get("reponse") or "C'est fait.")
+        return "J'ai beaucoup travaillé sur cette demande sans conclure. Tu peux la préciser ?"
+
+
+# --------------------------------------------------------------------------- #
 # Moteur local gratuit : Ollama (optionnel)
 # --------------------------------------------------------------------------- #
 
@@ -279,8 +380,18 @@ class MoteurOllama:
 # --------------------------------------------------------------------------- #
 
 def creer_moteur():
-    nom = os.getenv("JARVIS_MOTEUR", "claude").lower()
-    return (MoteurOllama() if nom == "ollama" else MoteurClaude()), nom
+    """
+    auto (défaut) : ton abonnement Claude via Claude Code, sauf si une clé API est fournie.
+    claude-code   : abonnement Claude Pro/Max (aucun coût en plus).
+    api           : API Claude payante (console.anthropic.com).
+    ollama        : modèle local gratuit.
+    """
+    nom = os.getenv("JARVIS_MOTEUR", "auto").lower()
+    if nom == "auto":
+        nom = "api" if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-a") else "claude-code"
+    moteurs = {"api": MoteurClaude, "claude": MoteurClaude, "ollama": MoteurOllama,
+               "claude-code": MoteurClaudeCode}
+    return moteurs.get(nom, MoteurClaudeCode)(), nom
 
 
 class Cerveau:
