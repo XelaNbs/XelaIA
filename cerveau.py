@@ -230,8 +230,9 @@ class MoteurClaudeCode:
 
     def __init__(self) -> None:
         import shutil
+        from integration.environment import claude_binary
 
-        self.binaire = shutil.which("claude") or str(Path.home() / ".local/bin/claude")
+        self.binaire = claude_binary()
         if not Path(self.binaire).exists():
             raise SystemExit(
                 "❌ Claude Code n'est pas installé. Lance ./install.sh, ou dans le Terminal :\n"
@@ -244,10 +245,12 @@ class MoteurClaudeCode:
     def _lancer(self, consigne: str, outils: str = "", delai: int = 900) -> str:
         import subprocess
 
-        env = dict(os.environ)
-        env.pop("ANTHROPIC_API_KEY", None)  # garantit l'usage de l'abonnement, pas de l'API
+        from integration.environment import subscription_environment
+        env = subscription_environment()
         commande = [self.binaire, "-p", "--output-format", "json", "--model", self.modele,
-                    "--disallowedTools", self.INTERDITS]
+                    "--restricted", "--setting-sources", "",
+                    "--tools", outils, "--disallowedTools", self.INTERDITS + ",mcp__*",
+                    "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']
         if outils:
             commande += ["--allowedTools", outils]
         res = subprocess.run(commande, input=consigne, capture_output=True, text=True,
@@ -258,6 +261,12 @@ class MoteurClaudeCode:
             raise RuntimeError(f"Claude Code a échoué : {(res.stderr or res.stdout)[:300]}")
         if donnees.get("is_error"):
             raise RuntimeError(f"Claude Code : {str(donnees.get('result'))[:300]}")
+        if res.returncode:
+            raise RuntimeError(f"Claude Code a quitté avec le code {res.returncode}")
+        from agents.stockage import connexion
+        import time
+        with connexion(True) as c:
+            c.execute('INSERT INTO engine_calls(kind,result,created) VALUES(?,?,?)',('claude-code',json.dumps({'modelUsage':donnees.get('modelUsage',{}),'session_id':donnees.get('session_id'),'duration_ms':donnees.get('duration_ms')},ensure_ascii=False),time.time()))
         return (donnees.get("result") or "").strip()
 
     def completer(self, consigne: str, systeme: str = "", effort: str = "") -> str:
@@ -386,12 +395,12 @@ def creer_moteur():
     api           : API Claude payante (console.anthropic.com).
     ollama        : modèle local gratuit.
     """
-    nom = os.getenv("JARVIS_MOTEUR", "auto").lower()
-    if nom == "auto":
-        nom = "api" if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-a") else "claude-code"
-    moteurs = {"api": MoteurClaude, "claude": MoteurClaude, "ollama": MoteurOllama,
-               "claude-code": MoteurClaudeCode}
-    return moteurs.get(nom, MoteurClaudeCode)(), nom
+    nom = os.getenv("JARVIS_MOTEUR", "claude-code").lower()
+    if nom != 'claude-code':
+        raise RuntimeError('Pilote : seul JARVIS_MOTEUR=claude-code est autorisé. Aucun repli API ou Ollama.')
+    if 'ANTHROPIC_API_KEY' in os.environ:
+        raise RuntimeError('ANTHROPIC_API_KEY est interdite dans le processus moteur')
+    return MoteurClaudeCode(), nom
 
 
 class Cerveau:
