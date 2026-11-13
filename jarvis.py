@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 import tempfile
 import time
@@ -48,6 +49,7 @@ def charger_env(fichier: Path) -> None:
         if not ligne or ligne.startswith("#") or "=" not in ligne:
             continue
         cle, valeur = ligne.split("=", 1)
+        valeur = re.split(r"\s+#", valeur, maxsplit=1)[0]  # retire un commentaire de fin de ligne
         os.environ.setdefault(cle.strip(), valeur.strip().strip('"').strip("'"))
 
 
