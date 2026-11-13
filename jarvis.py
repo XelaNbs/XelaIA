@@ -2,8 +2,8 @@
 """
 JARVIS — assistant vocal en français.
 
-Écoute le micro, se déclenche sur le mot « Jarvis », envoie la demande à
-l'API Claude et répond à voix haute avec edge-tts.
+Écoute le micro, se déclenche sur le mot « Jarvis », envoie la demande au
+cerveau (Ollama local gratuit, ou API Claude) qui pilote les agents, et répond à voix haute avec edge-tts.
 
 Usage :
     python jarvis.py            # mode vocal (micro + haut-parleurs)
@@ -26,24 +26,10 @@ from pathlib import Path
 # Configuration
 # --------------------------------------------------------------------------- #
 
-MODELE = os.getenv("JARVIS_MODELE", "claude-sonnet-5-5")
 VOIX = os.getenv("JARVIS_VOIX", "fr-FR-HenriNeural")  # ou fr-FR-DeniseNeural
 LANGUE = "fr-FR"
 MOT_ACTIVATION = "jarvis"
 MOTS_SORTIE = ("au revoir", "arrête-toi", "arrete-toi", "éteins-toi", "eteins-toi")
-MAX_TOURS_HISTORIQUE = 10  # nombre d'échanges gardés en mémoire
-MAX_TOKENS = 2000  # inclut la réflexion interne du modèle
-EFFORT = os.getenv("JARVIS_EFFORT", "low")  # low = rapide et économique, suffisant pour discuter
-
-PROMPT_SYSTEME = (
-    "Tu es JARVIS, l'assistant vocal personnel de l'utilisateur, sur son MacBook. "
-    "Tu réponds toujours en français, de façon naturelle, chaleureuse et concise "
-    "(2 à 4 phrases sauf si on te demande plus de détails). "
-    "Tes réponses sont lues à voix haute : n'utilise jamais de Markdown, de listes "
-    "à puces, d'emojis, de tableaux ni de blocs de code. Écris les nombres et "
-    "symboles comme on les prononce quand c'est plus clair à l'oral. "
-    "Si une demande est ambiguë, pose une courte question de clarification."
-)
 
 
 # --------------------------------------------------------------------------- #
@@ -88,8 +74,8 @@ def extraire_commande(transcription: str) -> str | None:
 # --------------------------------------------------------------------------- #
 
 class Voix:
-    def __init__(self, voix: str = VOIX, muet: bool = False) -> None:
-        self.voix = voix
+    def __init__(self, voix: str | None = None, muet: bool = False) -> None:
+        self.voix = voix or os.getenv("JARVIS_VOIX", VOIX)
         self.muet = muet
         if not muet:
             import pygame  # import tardif : pas nécessaire en mode muet
@@ -123,54 +109,6 @@ class Voix:
                 os.remove(chemin)
             except OSError:
                 pass
-
-
-# --------------------------------------------------------------------------- #
-# Cerveau (API Claude)
-# --------------------------------------------------------------------------- #
-
-class Cerveau:
-    def __init__(self) -> None:
-        import anthropic
-
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            sys.exit(
-                "❌ ANTHROPIC_API_KEY manquante. Copie .env.example en .env et "
-                "colle ta clé (https://console.anthropic.com)."
-            )
-        self._anthropic = anthropic
-        self.client = anthropic.Anthropic()
-        self.historique: list[dict] = []
-
-    def repondre(self, demande: str) -> str:
-        self.historique.append({"role": "user", "content": demande})
-        # On ne garde que les derniers échanges (le 1er message doit être "user").
-        self.historique = self.historique[-(MAX_TOURS_HISTORIQUE * 2):]
-        try:
-            reponse = self.client.messages.create(
-                model=MODELE,
-                max_tokens=MAX_TOKENS,
-                system=PROMPT_SYSTEME,
-                output_config={"effort": EFFORT},
-                messages=self.historique,
-            )
-            texte = "".join(
-                bloc.text for bloc in reponse.content if bloc.type == "text"
-            ).strip()
-        except self._anthropic.AuthenticationError:
-            self.historique.pop()
-            return "Ma clé d'API semble invalide. Vérifie le fichier point env."
-        except self._anthropic.APIConnectionError:
-            self.historique.pop()
-            return "Je n'arrive pas à joindre mes serveurs. Vérifie la connexion internet."
-        except self._anthropic.APIError as e:
-            self.historique.pop()
-            print(f"⚠️  Erreur API : {e}")
-            return "Désolé, j'ai rencontré une erreur en contactant Claude."
-
-        texte = texte or "Je n'ai pas de réponse à ça."
-        self.historique.append({"role": "assistant", "content": texte})
-        return texte
 
 
 # --------------------------------------------------------------------------- #
@@ -226,7 +164,7 @@ def veut_quitter(texte: str) -> bool:
     return any(normaliser(m) in norm for m in MOTS_SORTIE)
 
 
-def boucle_vocale(voix: Voix, cerveau: Cerveau, index_micro: int | None) -> None:
+def boucle_vocale(voix: Voix, cerveau, index_micro: int | None) -> None:
     oreille = Oreille(index_micro)
     voix.dire("Bonjour, je suis JARVIS. Dites Jarvis pour m'appeler.")
 
@@ -255,7 +193,7 @@ def boucle_vocale(voix: Voix, cerveau: Cerveau, index_micro: int | None) -> None
         voix.dire(cerveau.repondre(commande))
 
 
-def boucle_texte(voix: Voix, cerveau: Cerveau) -> None:
+def boucle_texte(voix: Voix, cerveau) -> None:
     print("Mode texte — tape ta demande (ou « au revoir » pour quitter).")
     while True:
         try:
@@ -272,6 +210,8 @@ def boucle_texte(voix: Voix, cerveau: Cerveau) -> None:
 
 
 def main() -> None:
+    from cerveau import Cerveau
+
     parser = argparse.ArgumentParser(description="JARVIS, assistant vocal.")
     parser.add_argument("--texte", action="store_true", help="saisie au clavier au lieu du micro")
     parser.add_argument("--muet", action="store_true", help="n'affiche que le texte, sans voix")
@@ -280,6 +220,7 @@ def main() -> None:
     args = parser.parse_args()
 
     charger_env(Path(__file__).with_name(".env"))
+    os.chdir(Path(__file__).resolve().parent)
 
     if args.micros:
         lister_micros()

@@ -1,13 +1,26 @@
-# JARVIS — assistant vocal en français
+# JARVIS : ton assistant vocal et le chef de ton équipe d'agents IA
 
-Il écoute le micro et se déclenche quand tu dis « Jarvis ». Ta demande part à l'API Claude (`claude-sonnet-5-5`), puis la réponse est lue à voix haute avec edge-tts.
+Tu parles à JARVIS. Il comprend ce que tu veux, fait travailler les agents spécialisés et te rend compte à voix haute, avec un peu d'humour. Il agit sans te demander la permission à chaque étape, et il retient ce que tu lui apprends sur toi.
 
-| Fichier | Rôle |
-|---|---|
-| `jarvis.py` | le programme |
-| `requirements.txt` | modules Python |
-| `install.sh` | installation guidée sur macOS, avec confirmation à chaque étape sensible |
-| `.env.example` | modèle pour ta clé API (copié en `.env`, qui n'est jamais commité) |
+```
+            Toi  ⇄  JARVIS (voix, mémoire, personnalité)
+                       │
+     ┌─────────────┬───┴──────────┬───────────────┬──────────────┐
+  Mémoire      Agent emploi   Agent candidature  Agent mails*  Agent réseaux*
+ (souvenirs)  (France Travail) (lettres, mails)   (Gmail)       (ton appli)
+                                                   * prochaines étapes
+```
+
+## La solution 100 % gratuite (par défaut)
+
+| Brique | Outil | Coût |
+|---|---|---|
+| Cerveau | **Ollama** + modèle `qwen3:8b`, qui tourne en local sur le Mac | gratuit, hors ligne, privé |
+| Écoute | SpeechRecognition (service Google gratuit) | gratuit |
+| Voix | edge-tts (voix neuronales Microsoft) | gratuit |
+| Offres d'emploi | API officielle France Travail | gratuit (inscription) |
+
+Pour plus d'intelligence, passe `JARVIS_MOTEUR=claude` dans `.env` (API Claude, payante). Le reste ne change pas.
 
 ## Installation (MacBook, Apple Silicon)
 
@@ -18,44 +31,48 @@ git checkout claude/exciting-goldberg-ivamp4
 ./install.sh
 ```
 
-Le script :
-1. vérifie Python 3 ;
-2. installe Homebrew s'il manque, **après ta confirmation** ;
-3. installe `portaudio`, dont pyaudio a besoin, **après ta confirmation** ;
-4. crée l'environnement virtuel `.venv` ;
-5. installe les modules dans `.venv` (rien n'est installé globalement), **après ta confirmation** ;
-6. crée `.env`.
+Le script installe Homebrew, portaudio, **Ollama** et son modèle (environ 5 Go), le venv et les modules. Il demande ta confirmation à chaque étape.
 
-Ouvre ensuite `.env` et colle ta clé : `ANTHROPIC_API_KEY=sk-ant-...` (à créer sur https://console.anthropic.com).
+Ensuite :
+1. **`profil.md`** : colle ton CV et ce que tu recherches. C'est ce qui permet aux agents de travailler pour toi. Ce fichier ne quitte jamais ton Mac et n'est pas envoyé sur GitHub.
+2. **France Travail** (5 minutes, gratuit) : crée un compte sur https://francetravail.io, puis « Créer une application » et abonne-la à l'API **Offres d'emploi v2**. Copie l'identifiant et la clé secrète dans `.env`.
 
 ## Lancement
 
 ```bash
 source .venv/bin/activate
-python jarvis.py --texte    # 1er test : au clavier, avec la voix
-python jarvis.py            # mode vocal
+python jarvis.py --texte    # au clavier
+python jarvis.py            # à la voix
 ```
 
-Exemples : « Jarvis, quel temps fait-il à Paris en novembre ? », ou dis « Jarvis », attends « Oui ? », puis pose ta question.
-Pour quitter : « Jarvis, au revoir » ou `Ctrl+C`.
+Exemples :
+- « Jarvis, je cherche un CDI de développeur Python à Paris, trouve-moi les meilleures offres. »
+- « Jarvis, prépare les candidatures pour les trois meilleures. »
+- « Jarvis, retiens que je ne veux pas travailler dans la banque. »
+- « Jarvis, où en sont mes candidatures ? »
 
-Options : `--muet` (texte seulement), `--micros` (liste les micros), `--micro N` (choisit un micro).
-Pour une voix féminine : `JARVIS_VOIX=fr-FR-DeniseNeural` dans `.env`.
+Les candidatures rédigées (objet, mail, lettre de motivation) sont enregistrées dans `candidatures/`. Les offres suivies sont dans `donnees/offres.json`, et la mémoire de Jarvis dans `donnees/memoire.md`.
 
-## Dépannage
+## Ajouter un agent
 
-- **Le micro n'entend rien** : au 1er lancement, macOS demande l'accès au micro pour le Terminal. Sinon, va dans Réglages Système → Confidentialité et sécurité → Micro et active Terminal (ou iTerm, ou VS Code).
-- **Erreur `CERTIFICATE_VERIFY_FAILED`** (Python installé depuis python.org) : lance `/Applications/Python 3.x/Install Certificates.command`.
-- **pyaudio ne compile pas** : vérifie `brew install portaudio`, puis relance `./install.sh`.
-- **pygame ne s'installe pas** (Python très récent) : `pip install pygame-ce`, c'est le même module `pygame`.
-
-## Limites actuelles
-
-- La reconnaissance vocale passe par le service gratuit de Google : Internet est requis et l'audio est envoyé à Google tant que JARVIS écoute.
-- La mémoire de conversation (10 échanges) est perdue à chaque redémarrage.
+Crée `agents/mon_agent.py` avec une fonction `outils(completer)` qui renvoie une liste d'`Outil`, puis ajoute-le dans `agents/__init__.py`. Jarvis saura l'utiliser tout seul.
 
 ## Feuille de route
 
-- [ ] Mot d'activation local avec **openWakeWord** : plus d'envoi audio permanent, déclenchement plus rapide.
-- [ ] Accès à **Google Agenda** (API Google Calendar + OAuth, exposé à Claude via le *tool use*).
-- [ ] **Rappels** (planificateur local + notifications macOS + annonce vocale).
+- [x] Cerveau gratuit local (Ollama) ou Claude au choix
+- [x] Mémoire durable
+- [x] Agent emploi : recherche France Travail et tri selon ton profil
+- [x] Agent candidature : mail et lettre sur mesure
+- [ ] Agent mails : envoi des candidatures depuis Gmail, avec un plafond quotidien, et tri de ta boîte
+- [ ] Agent contacts : trouver le recruteur ou le manager et son email
+- [ ] Mode autonome : recherche et candidatures chaque matin, puis un résumé vocal
+- [ ] Agent réseaux sociaux pour ton appli
+- [ ] Mot d'activation local (openWakeWord) et transcription locale (Whisper)
+- [ ] Google Agenda et rappels
+
+## Dépannage
+
+- **Micro muet** : Réglages Système → Confidentialité et sécurité → Micro → active Terminal.
+- **« Ollama indisponible »** : lance `brew services start ollama`, puis `ollama pull qwen3:8b`.
+- **Jarvis lent ou peu malin** : avec 16 Go de RAM, essaie `qwen3:4b` (plus rapide). Avec 24 Go ou plus, `qwen3:14b` est plus intelligent. Change `JARVIS_MODELE_LOCAL` dans `.env`.
+- **`CERTIFICATE_VERIFY_FAILED`** : lance `/Applications/Python 3.x/Install Certificates.command`.

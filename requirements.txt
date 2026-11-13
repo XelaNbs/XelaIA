@@ -1,4 +1,5 @@
-anthropic>=0.40
+ollama>=0.5            # cerveau local gratuit (moteur par défaut)
+anthropic>=0.40        # cerveau Claude (optionnel, payant)
 SpeechRecognition>=3.10
 pyaudio>=0.2.14
 edge-tts>=6.1

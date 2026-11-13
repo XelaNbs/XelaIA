@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+# Données personnelles : jamais sur GitHub
+profil.md
+donnees/
+candidatures/

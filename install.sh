@@ -50,6 +50,28 @@ else
   exit 1
 fi
 
+# 3 bis. Ollama : le cerveau local gratuit
+MODELE_LOCAL="${JARVIS_MODELE_LOCAL:-qwen3:8b}"
+if ! command -v ollama >/dev/null; then
+  if confirmer "Installer Ollama (cerveau IA local et gratuit) avec Homebrew ?"; then
+    brew install ollama
+  fi
+fi
+if command -v ollama >/dev/null; then
+  if ! ollama list >/dev/null 2>&1; then
+    if confirmer "Démarrer Ollama en arrière-plan (et à chaque démarrage du Mac) ?"; then
+      brew services start ollama
+      sleep 3
+    fi
+  fi
+  if ! ollama list 2>/dev/null | grep -q "^${MODELE_LOCAL}"; then
+    if confirmer "Télécharger le modèle ${MODELE_LOCAL} (environ 5 Go) ?"; then
+      ollama pull "$MODELE_LOCAL"
+    fi
+  fi
+  echo "✅ Ollama prêt"
+fi
+
 # 4. Environnement virtuel
 if [ ! -d .venv ]; then
   echo "Création de l'environnement virtuel .venv…"
@@ -60,7 +82,7 @@ source .venv/bin/activate
 echo "✅ venv actif : $(python --version)"
 
 # 5. Dépendances Python (dans le venv uniquement)
-if confirmer "Installer les modules Python (anthropic, SpeechRecognition, pyaudio, edge-tts, pygame) dans .venv ?"; then
+if confirmer "Installer les modules Python (ollama, anthropic, SpeechRecognition, pyaudio, edge-tts, pygame) dans .venv ?"; then
   pip install --upgrade pip
   PA="$(brew --prefix portaudio)"
   CFLAGS="-I$PA/include" LDFLAGS="-L$PA/lib" pip install -r requirements.txt
@@ -72,7 +94,11 @@ fi
 # 6. Clé API
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "📝 Fichier .env créé : ouvre-le et colle ta clé ANTHROPIC_API_KEY."
+  echo "📝 Fichier .env créé (moteur gratuit Ollama par défaut)."
+fi
+if [ ! -f profil.md ]; then
+  cp profil.exemple.md profil.md
+  echo "📝 Fichier profil.md créé : colle ton CV dedans pour que les agents te connaissent."
 fi
 
 echo
