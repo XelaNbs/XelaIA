@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from agents import stockage
-from integration.environment import subscription_environment,claude_binary
+from integration.environment import subscription_environment,claude_binary,MODEL
 
 ROOT=Path(__file__).resolve().parents[1]
 TOKEN_FILE=ROOT/'donnees'/'bridge-token'
@@ -33,11 +33,15 @@ def auth_status():
     try:
         p=subprocess.run([claude_binary(),'auth','status'],capture_output=True,text=True,timeout=15,env=subscription_environment())
         d=json.loads(p.stdout)
-        return {'logged_in':bool(d.get('loggedIn')),'auth_method':d.get('authMethod'),'provider':'claude-code','model':'sonnet','api_key_absent':'ANTHROPIC_API_KEY' not in os.environ}
-    except Exception as e:return {'logged_in':False,'provider':'claude-code','model':'sonnet','error':str(e)[:200],'api_key_absent':'ANTHROPIC_API_KEY' not in os.environ}
+        return {'logged_in':bool(d.get('loggedIn')),'auth_method':d.get('authMethod'),'provider':'claude-code','model':MODEL,'api_key_absent':'ANTHROPIC_API_KEY' not in os.environ}
+    except Exception as e:return {'logged_in':False,'provider':'claude-code','model':MODEL,'error':str(e)[:200],'api_key_absent':'ANTHROPIC_API_KEY' not in os.environ}
 
 def identifier(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:24]
+
+def task_documents(started):
+    """A queued mission must never validate an earlier mission's documents."""
+    return (f for f in (ROOT/'candidatures').rglob('*.pdf') if f.stat().st_mtime>=started)
 
 def enqueue(kind,payload=None,dedupe=None):
     payload=payload or {}
@@ -94,15 +98,14 @@ class Runtime:
                 if task:c.execute("UPDATE engine_tasks SET state='running',attempts=attempts+1,updated=? WHERE id=?",(time.time(),task['id']))
             if not task:continue
             try:
-                brain=self.get();p=json.loads(task['payload'])
+                brain=self.get();p=json.loads(task['payload']);started=time.time()
                 from agents import emploi,reseaux,missions
                 if task['kind']=='research':result=missions.executer_mission('recherche emploi',lambda:emploi.mission_emploi(brain.moteur,p.get('nombre',3),p.get('focus','')))
                 elif task['kind']=='application':result=missions.executer_mission('dossier candidature',lambda:emploi.mission_offre_precise(brain.moteur,p['offre']))
                 else:result=missions.executer_mission('contenus réseaux',lambda:reseaux.mission_contenus(brain.moteur,p.get('nombre',3),p.get('theme','')))
                 if task['kind'] in ('application','research') and 'a échoué :' not in result:
                     from integration.document_validation import validate_generated_pdf
-                    for file in (ROOT/'candidatures').rglob('*.pdf'):
-                        if file.stat().st_mtime<task['created']:continue
+                    for file in task_documents(started):
                         relative=str(file.relative_to(ROOT))
                         try:
                             checked=validate_generated_pdf(file,p.get('expected_language'))
@@ -118,7 +121,7 @@ class Runtime:
                         with stockage.connexion(True) as c:c.execute('INSERT OR REPLACE INTO engine_artifacts VALUES(?,?,?,?)',(relative,1,json.dumps(checked),time.time()))
                 state_='blocked' if 'a échoué :' in result else 'done'
                 with stockage.connexion(True) as c:
-                    c.execute('UPDATE engine_tasks SET state=?,result=?,updated=? WHERE id=?',(state_,result,time.time(),task['id']))
+                    c.execute('UPDATE engine_tasks SET state=?,result=?,error=NULL,updated=? WHERE id=?',(state_,result,time.time(),task['id']))
                     c.execute('INSERT INTO engine_reports(content,created) VALUES(?,?)',(result,time.time()))
             except Exception as e:
                 with stockage.connexion(True) as c:c.execute("UPDATE engine_tasks SET state='blocked',error=?,updated=? WHERE id=?",(str(e)[:1200],time.time(),task['id']))

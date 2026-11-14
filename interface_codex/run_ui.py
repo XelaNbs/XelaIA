@@ -38,7 +38,7 @@ def ui_state(store):
     docs=[{'id':f['id'],'job_id':None,'kind':f['kind'],'content':'# '+f['name']+'\n\nFichier créé par le moteur : '+f['path'],'state':'blocked' if f.get('validation') and not f['validation']['valid'] else 'draft','created':f['created'],'filename':f['name']} for f in source['files']]
     memory=[{'id':'m-'+str(m['id']),'category':'reference','content':m['contenu'],'source':m.get('source','utilisateur'),'status':m.get('statut','declared'),'created':0,'updated':0} for m in source['memory']]
     task_agents={'research':'jobs','application':'applications','padel':'editor'}
-    tasks=[{'id':t['id'],'agent':task_agents[t['kind']],'kind':t['kind'],'payload':t['payload'],'state':t['state'],'attempts':t['attempts'],'max_attempts':1,'created':t['created'],'result':json.dumps(t['result'],ensure_ascii=False),'error':t['error'],'dependency':None} for t in source['tasks']]
+    tasks=[{'id':t['id'],'agent':task_agents[t['kind']],'kind':t['kind'],'payload':t['payload'],'state':t['state'],'attempts':t['attempts'],'max_attempts':3,'created':t['created'],'result':json.dumps(t['result'],ensure_ascii=False),'error':t['error'],'dependency':None} for t in source['tasks']]
     return {'agents':AGENTS,'memory':memory,'jobs':jobs,'documents':docs,'tasks':tasks,'messages':[{**m,'session':'main'} for m in source['messages']],
         'reports':source['reports'],'batches':[],'actions':[],'mail':[],
         'mandates':store.rows('SELECT * FROM mandates'),'audit':store.rows('SELECT * FROM audit ORDER BY id DESC LIMIT 30'),

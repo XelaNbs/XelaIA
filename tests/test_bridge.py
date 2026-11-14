@@ -8,13 +8,19 @@ import urllib.request
 import urllib.error
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
-from integration.engine_server import Handler,enqueue,state
+from integration.engine_server import Handler,enqueue,state,task_documents
 from agents.stockage import connexion
 
 class BridgeTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.patch=patch.dict(os.environ,{'JARVIS_DB':str(Path(self.temp.name)/'db.sqlite3')});self.patch.start()
     def tearDown(self):self.patch.stop();self.temp.cleanup()
+    def test_delayed_english_mission_excludes_previous_french_documents(self):
+        root=Path(self.temp.name);folder=root/'candidatures';folder.mkdir()
+        old=folder/'CV_fr.pdf';old.touch();os.utime(old,(100,100))
+        current=folder/'CV_en.pdf';current.touch();os.utime(current,(300,300))
+        with patch('integration.engine_server.ROOT',root):
+            self.assertEqual(list(task_documents(200)),[current])
     def test_repeated_generic_search_joins_active_mission(self):
         first=enqueue('research',{'nombre':5,'focus':'Lisbonne'})
         self.assertEqual(enqueue('research',{'nombre':3}),first)
