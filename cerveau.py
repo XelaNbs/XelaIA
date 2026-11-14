@@ -296,7 +296,11 @@ class MoteurClaudeCode:
     def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 15) -> str:
         return self._lancer(
             f"{systeme}\n\nTu peux faire jusqu'à {max_recherches} recherches web (WebSearch) "
-            f"et lire des pages (WebFetch).\n\n{consigne}", "WebSearch,WebFetch")
+            f"et lire des pages (WebFetch).\n\n{consigne}\n\n"
+            "Pour une offre d'emploi, conserve le titre et la description dans la langue de "
+            "l'annonce originale, même si la demande est en français. Ne traduis pas ces "
+            "champs : ils déterminent la langue du CV et de la lettre. Si la page est "
+            "inaccessible, indique-le explicitement ; ne reconstitue pas une annonce.", "WebSearch,WebFetch")
 
     def tour(self, historique: list[dict], outils: list[Outil]) -> str:
         index = {o.nom: o for o in outils}
