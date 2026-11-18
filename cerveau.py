@@ -310,8 +310,10 @@ class MoteurClaudeCode:
             f"{'UTILISATEUR' if m['role'] == 'user' else 'JARVIS'} : {m['content']}"
             for m in historique if isinstance(m.get("content"), str))
         resultats = ""
+        from integration.grounding import system_facts,record_tool
         for _ in range(MAX_ETAPES_OUTILS):
             consigne = f"""{prompt_systeme()}
+{system_facts()}
 
 TES OUTILS (tu les déclenches via le champ "actions") :
 {catalogue}
@@ -333,6 +335,7 @@ Si tu as besoin du résultat d'une action avant de répondre, mets les actions e
             for a in actions:
                 nom = a.get("outil", "")
                 r = executer(index, nom, a.get("arguments") or {})
+                record_tool(nom,r)
                 resultats += f"\n- {nom} → {r}"
             if sortie.get("reponse") or not actions:
                 return nettoyer(sortie.get("reponse") or "C'est fait.")
