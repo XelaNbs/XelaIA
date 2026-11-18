@@ -88,4 +88,44 @@ class ProofTests(unittest.TestCase):
         self.assertEqual(len(result['dossiers']),1);self.assertEqual(len(result['dossiers'][0]['files']),2)
         self.assertEqual(result['dossiers'][0]['submission'],'not_submitted')
 
+    def test_padel_requires_a_created_content_file(self):
+        task={'id':'padel-task','kind':'padel'}
+        self.assertEqual(receipts.outcome(task,'Des posts sont prêts',{'errors':[]})[0],'blocked')
+        file=self.root/'contenus'/'planning.md';file.parent.mkdir();file.write_text('# Brouillon non publié')
+        receipts.capture(file,'padel-task')
+        state,report=receipts.outcome(task,'Des posts sont prêts',{'errors':[]})
+        self.assertEqual(state,'done');self.assertIn('Aucune publication',report)
+
+    def test_historical_technical_test_is_labelled_and_not_a_submission(self):
+        source={'offers':[{'key':'x','lien':'https://example.test','entreprise':'Test','titre':'AM'}],
+          'tasks':[{'id':'test','kind':'application','state':'done','attempts':1,'created':1,'updated':2,'result':'ok','error':None,'payload':'{}','dedupe':'pilot-old'}],
+          'files':[{'id':'x','task_id':'test','offer_key':'x','offer_url':'https://example.test','kind':'application','validation':{'valid':True},'available':True,'origin':'reconstructed','name':'CV.pdf','created':1,'sha256':'hash','size':10}]}
+        value=project(source)
+        self.assertTrue(value['dossiers'][0]['is_test']);self.assertTrue(value['tasks'][0]['is_test'])
+
+    def test_pdf_progress_handles_both_renderer_signatures(self):
+        from agents import documents
+        def generer_cv_pdf(cv,chemin):return 1
+        def generer_lettre_pdf(lettre,cv,chemin):return chemin
+        with patch.object(documents,'generer_cv_pdf',generer_cv_pdf),patch.object(documents,'generer_lettre_pdf',generer_lettre_pdf):
+            receipts.install_document_progress()
+            with receipts.scope('progress-task'):
+                self.assertEqual(documents.generer_cv_pdf({},Path('CV.pdf')),1)
+                self.assertEqual(documents.generer_lettre_pdf({}, {},Path('Lettre.pdf')),Path('Lettre.pdf'))
+        with connexion() as c:events=[json.loads(r[0]) for r in c.execute("select detail from engine_task_events where phase='file_rendered'")]
+        self.assertEqual([e['name'] for e in events],['CV.pdf','Lettre.pdf'])
+
+    def test_model_stage_is_recorded_against_its_real_task(self):
+        from cerveau import MoteurClaudeCode
+        model=MoteurClaudeCode.__new__(MoteurClaudeCode);model.binaire='/not-run';model.modele='claude-sonnet-5-5'
+        response=SimpleNamespace(stdout=json.dumps({'is_error':False,'result':'OK','modelUsage':{'claude-sonnet-5-5':{}}}),stderr='',returncode=0)
+        with receipts.scope('actual-task'),receipts.operation('Rédaction du CV adapté'),patch('subprocess.run',return_value=response):
+            self.assertEqual(model._lancer('Test'),'OK')
+        with connexion() as c:
+            events=[dict(r) for r in c.execute('select * from engine_task_events order by id')]
+            call=json.loads(c.execute('select result from engine_calls').fetchone()[0])
+        self.assertEqual(call['task_id'],'actual-task');self.assertEqual(events[0]['phase'],'model_started')
+        self.assertEqual(json.loads(events[0]['detail'])['operation'],'Rédaction du CV adapté')
+        self.assertEqual(events[-1]['phase'],'model_response')
+
 if __name__=='__main__':unittest.main()

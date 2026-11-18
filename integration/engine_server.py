@@ -51,8 +51,9 @@ def enqueue(kind,payload=None,dedupe=None):
     if kind=='application' and not str(payload.get('offre','')).strip():raise ValueError('Offre précise requise')
     key=secrets.token_hex(12);unique=dedupe or key
     with stockage.connexion(True) as c:
-        active=c.execute("SELECT id,payload FROM engine_tasks WHERE kind=? AND state IN ('queued','running') ORDER BY created LIMIT 1",(kind,)).fetchone()
-        if active and (json.loads(active['payload'])==payload or (kind=='research' and not payload.get('focus'))):return active['id']
+        active=c.execute("SELECT id,payload FROM engine_tasks WHERE kind=? AND state IN ('queued','running') ORDER BY created",(kind,)).fetchall()
+        for existing in active:
+            if json.loads(existing['payload'])==payload or (kind=='research' and not payload.get('focus')):return existing['id']
         inserted=c.execute('INSERT OR IGNORE INTO engine_tasks(id,kind,payload,state,created,updated,dedupe) VALUES(?,?,?,?,?,?,?)',(key,kind,json.dumps(payload,ensure_ascii=False),'queued',time.time(),time.time(),unique)).rowcount
         saved=c.execute('SELECT id FROM engine_tasks WHERE dedupe=?',(unique,)).fetchone()[0]
     if inserted:receipts.event(saved,'queued',{'kind':kind})
@@ -115,7 +116,7 @@ class Runtime:
                 task=c.execute("SELECT * FROM engine_tasks WHERE state='queued' AND attempts<3 ORDER BY created LIMIT 1").fetchone()
                 if task:c.execute("UPDATE engine_tasks SET state='running',attempts=attempts+1,updated=? WHERE id=?",(time.time(),task['id']))
             if not task:continue
-            with receipts.scope(task['id'],json.loads(task['payload']).get('expected_language')) as current:
+            with receipts.scope(task['id'],json.loads(task['payload']).get('expected_language'),task['kind']) as current:
                 receipts.event(task['id'],'running',{'kind':task['kind']})
                 try:
                     brain=self.get();p=json.loads(task['payload'])
@@ -214,7 +215,7 @@ def main():
     lock=open(ROOT/'donnees'/'engine.lock','a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     stockage.importer_anciens(ROOT)
     from agents import emploi
-    receipts.install(emploi);receipts.import_history()
+    receipts.install(emploi);receipts.install_document_progress();receipts.import_history()
     server=ThreadingHTTPServer(('127.0.0.1',8766),Handler);server.token=token();server.runtime=Runtime()
     threading.Thread(target=server.runtime.worker,daemon=True).start()
     print('Moteur Claude Code/Sonnet sur 127.0.0.1:8766. Routine désactivée dans ce processus.',flush=True)

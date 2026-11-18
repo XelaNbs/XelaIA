@@ -35,8 +35,8 @@ def event(task_id,phase,detail=None):
 
 
 @contextlib.contextmanager
-def scope(task_id,language=None):
-    value={'id':task_id,'language':language,'errors':[],'offers':set()}
+def scope(task_id,language=None,kind=None):
+    value={'id':task_id,'language':language,'kind':kind,'errors':[],'offers':set()}
     token=CURRENT.set(value)
     try:yield value
     finally:CURRENT.reset(token)
@@ -157,3 +157,33 @@ def import_history():
                     check={'valid':False,**previous[relative.casefold()]}
                     c.execute('UPDATE engine_task_files SET validation=? WHERE id=?',(json.dumps(check),saved['id']))
     with connexion(True) as c:c.execute('INSERT OR IGNORE INTO agent_meta VALUES(?,?)',(marker,'done'))
+
+
+@contextlib.contextmanager
+def operation(label):
+    current=CURRENT.get()
+    previous=current.get('operation') if current else None
+    if current:current['operation']=label
+    try:yield
+    finally:
+        if current:current['operation']=previous
+
+
+def install_document_progress():
+    from agents import documents
+    for name in ('generer_cv_pdf','generer_lettre_pdf'):
+        original=getattr(documents,name)
+        if getattr(original,'_progress_receipt',False):continue
+        def decorate(function):
+            @functools.wraps(function)
+            def tracked(*args,**kwargs):
+                result=function(*args,**kwargs)
+                current=CURRENT.get()
+                if current:
+                    index=1 if function.__name__=='generer_cv_pdf' else 2
+                    path=Path(args[index] if len(args)>index else kwargs.get('chemin',''))
+                    event(current['id'],'file_rendered',{'name':path.name,'kind':'CV PDF' if function.__name__=='generer_cv_pdf' else 'Lettre PDF','pages':result if isinstance(result,int) else None})
+                return result
+            tracked._progress_receipt=True
+            return tracked
+        setattr(documents,name,decorate(original))

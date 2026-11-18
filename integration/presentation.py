@@ -38,6 +38,7 @@ def project(source):
             'content':'# '+f['name'],'state':'draft' if valid else 'blocked','created':f['created'],
             'filename':f['name'],'sha256':f['sha256'],'size':f['size'],'origin':f['origin'],
             'validation':f['validation'],'available':f.get('available',False)})
+    test_ids={t['id'] for t in source['tasks'] if str(t.get('dedupe','')).startswith('pilot-')}
     dossiers=[]
     for job in jobs:
         pieces=[d for d in docs if d['job_id']==job['id']]
@@ -46,12 +47,12 @@ def project(source):
             candidates=[d for d in pieces if d['kind']==kind and d['state']!='blocked']
             if candidates:chosen[kind]=max(candidates,key=lambda d:(d['origin']=='executed',d['created']))
         dossiers.append({**job,'files':list(chosen.values()),'history':pieces,'state':'draft' if {'application','cover_letter'}.issubset(chosen) else 'needs_documents',
-                         'submission':'not_submitted','task_ids':sorted({d['task_id'] for d in pieces if d['task_id']})})
+                         'submission':'not_submitted','is_test':bool(pieces) and all(d['task_id'] in test_ids for d in pieces),'task_ids':sorted({d['task_id'] for d in pieces if d['task_id']})})
     task_agents={'research':'jobs','application':'applications','padel':'editor'}
     tasks=[]
     for t in source['tasks']:
         tasks.append({'id':t['id'],'agent':task_agents[t['kind']],'kind':t['kind'],'payload':t['payload'],'state':t['state'],
-            'attempts':t['attempts'],'max_attempts':3,'created':t['created'],'updated':t['updated'],
+            'is_test':t['id'] in test_ids,'attempts':t['attempts'],'max_attempts':3,'created':t['created'],'updated':t['updated'],
             'result':json.dumps(t['result'],ensure_ascii=False),'error':t['error'],'dependency':None,
             'files':[d for d in docs if d['task_id']==t['id']],
             'events':[e for e in source.get('events',[]) if e['task_id']==t['id']]})

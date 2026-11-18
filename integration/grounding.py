@@ -31,8 +31,9 @@ def facts():
     with connexion() as c:
         active=[dict(r) for r in c.execute("SELECT id,kind,state FROM engine_tasks WHERE state IN ('queued','running') ORDER BY created")]
         counts={r[0]:r[1] for r in c.execute('SELECT state,count(*) FROM engine_tasks GROUP BY state')}
-        receipts=c.execute("SELECT count(*) FROM engine_task_files WHERE kind IN ('application','cover_letter')").fetchone()[0]
-    return {'active_tasks':active,'states':counts,'file_receipts':receipts,'confirmed_applications':0,
+    from integration.receipts import files
+    receipt_count=sum(f['kind'] in ('application','cover_letter') and f['available'] for f in files())
+    return {'active_tasks':active,'states':counts,'file_receipts':receipt_count,'confirmed_applications':0,
             'external_sending':False,'social_publishing':False,'routine_enabled':False}
 
 
@@ -59,7 +60,7 @@ def guarded_reply(answer,evidence):
     queued=[e['result'] for e in evidence if e['result'].get('task_id')]
     if queued:
         ids=', '.join(q['task_id'][:8] for q in queued)
-        return f'Mission enregistrée : {ids}. Son état et ses pièces apparaissent dans Missions et Candidatures. Aucun envoi externe effectué.'
+        return f'Mission enregistrée : {ids}. Son étape et ses résultats apparaissent directement sur l’accueil. Aucun envoi externe effectué.'
     # Report work claims through a deterministic receipt view, not model narration.
     claim=re.search(r"(?:missions?|agents?|équipe|dossiers?|candidatures?).{0,70}(?:coulisses|continu|suivent|en cours|travaill|avance|prépar|envoy|postul|termin|prêt)|(?:j.ai|nous avons|je viens de).{0,45}(?:envoy|postul|publi|lanc|dépos|prépar|créé|termin)|(?:c.est fait|c’est fait|c'est envoyé)",answer,re.I|re.S)
     if claim:return summary()

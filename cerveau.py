@@ -255,6 +255,9 @@ class MoteurClaudeCode:
         commande += ['--settings',json.dumps({'model':self.modele,'availableModels':[self.modele],'enforceAvailableModels':True})]
         if outils:
             commande += ["--allowedTools", outils]
+        from integration.receipts import CURRENT,event
+        active=CURRENT.get()
+        if active:event(active['id'],'model_started',{'operation':active.get('operation') or 'Traitement Claude Code'})
         res = subprocess.run(commande, input=consigne, capture_output=True, text=True,
                              timeout=delai, env=env, cwd=str(Path(__file__).resolve().parent))
         try:
@@ -266,13 +269,24 @@ class MoteurClaudeCode:
         if res.returncode:
             raise RuntimeError(f"Claude Code a quitté avec le code {res.returncode}")
         from agents.stockage import connexion
+        from integration.receipts import CURRENT,event
+        current=CURRENT.get()
         import time
         with connexion(True) as c:
-            c.execute('INSERT INTO engine_calls(kind,result,created) VALUES(?,?,?)',('claude-code',json.dumps({'modelUsage':donnees.get('modelUsage',{}),'session_id':donnees.get('session_id'),'duration_ms':donnees.get('duration_ms')},ensure_ascii=False),time.time()))
+            call=c.execute('INSERT INTO engine_calls(kind,result,created) VALUES(?,?,?)',('claude-code',json.dumps({'modelUsage':donnees.get('modelUsage',{}),'session_id':donnees.get('session_id'),'duration_ms':donnees.get('duration_ms'),'task_id':current['id'] if current else None},ensure_ascii=False),time.time())).lastrowid
+        if current:event(current['id'],'model_response',{'call_id':call,'models':list(donnees.get('modelUsage',{}))})
         return (donnees.get("result") or "").strip()
 
     def completer(self, consigne: str, systeme: str = "", effort: str = "") -> str:
-        return self._lancer(f"{systeme}\n\n{consigne}".strip())
+        from integration.receipts import CURRENT,operation
+        if (CURRENT.get() or {}).get('kind')=='padel':
+            consigne += ("\nLivrable : brouillon non publié. N'invente aucune statistique, fonctionnalité, "
+                         "capture, témoignage ni résultat de Padel Prog. Les informations manquantes "
+                         "doivent rester explicitement à confirmer. Les visuels sont des briefs, pas "
+                         "des montages réalisés. Cite les sources des tendances ; si elles ne sont pas "
+                         "vérifiables, indique-le et distingue les idées proposées des faits.")
+        with operation('Rédaction du planning Padel' if (CURRENT.get() or {}).get('kind')=='padel' else 'Rédaction de la fiche de candidature'):
+            return self._lancer(f"{systeme}\n\n{consigne}".strip())
 
     def completer_json(self, consigne: str, schema: dict, systeme: str = "",
                        pdf: Path | None = None, effort: str = "") -> dict:
@@ -283,10 +297,12 @@ class MoteurClaudeCode:
         if pdf:
             consigne = f"Lis le fichier PDF {Path(pdf).resolve()} avec l'outil Read.\n\n{consigne}"
             outils = "Read"
-        texte = self._lancer(
-            f"{systeme}\n\n{consigne}\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans "
-            f"texte autour, respectant ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}",
-            outils)
+        from integration.receipts import operation
+        with operation('Lecture du CV de référence' if pdf else 'Rédaction du CV adapté' if is_cv else 'Rédaction de la lettre'):
+            texte = self._lancer(
+                f"{systeme}\n\n{consigne}\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans "
+                f"texte autour, respectant ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}",
+                outils)
         value=extraire_objet_json(texte)
         if is_cv:
             from integration.document_validation import validate_cv_numbers
@@ -294,8 +310,10 @@ class MoteurClaudeCode:
         return value
 
     def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 15) -> str:
-        return self._lancer(
-            f"{systeme}\n\nTu peux faire jusqu'à {max_recherches} recherches web (WebSearch) "
+        from integration.receipts import operation
+        with operation('Recherche et lecture des sources web'):
+            return self._lancer(
+                f"{systeme}\n\nTu peux faire jusqu'à {max_recherches} recherches web (WebSearch) "
             f"et lire des pages (WebFetch).\n\n{consigne}\n\n"
             "Pour une offre d'emploi, conserve le titre et la description dans la langue de "
             "l'annonce originale, même si la demande est en français. Ne traduis pas ces "
