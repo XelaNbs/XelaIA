@@ -9,6 +9,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 from jarvis import server
 from jarvis.core import Store,AGENTS,Blocked,now
 from jarvis.engine import Engine,ROOT_ENGINE
+sys.path.insert(0,str(ROOT_ENGINE))
+from integration.presentation import project
 
 DATA=ROOT_ENGINE/'donnees'
 os.environ['JARVIS_DATA']=str(DATA)
@@ -23,25 +25,16 @@ def diagnostics(store):
     return {'model':'Claude Code · Sonnet','model_installed':bool(health.get('logged_in')),'engine':health,
         'whisper':bool(shutil.which('whisper-cli') and shutil.which('ffmpeg') and Path(store.config()['whisper_model']).exists()),
         'gmail':False,'elevenlabs_key':False,'social':'non connecté','n8n':'import ultérieur','remote_https':False,'voice':store.config().get('voice','Thomas'),
-        'pilot':True,'routine':'Seule la programmation existante sur 8765 est active pendant le pilote'}
+        'pilot':True,'routine':'Routine du pilote désactivée ; aucune exécution récurrente assurée ici'}
 server.diagnostics=diagnostics
 
 def ui_state(store):
     source=Engine(store).call('/state')
-    jobs=[]
-    for o in source['offers']:
-        jobs.append({'id':o['key'],'company':o.get('entreprise',''),'title':o.get('titre',''),'location':o.get('lieu',''),
-            'url':o.get('lien',''),'source':o.get('source') or o.get('lien',''),'posted':o.get('date_publication'),
-            'checked':o.get('verified_at',0),'score':o.get('score',0),'reasons':json.dumps([o.get('pourquoi','Résultat du moteur : adéquation à relire'),o.get('points_faibles','Exigences à vérifier')],ensure_ascii=False),
-            'description':o.get('description',''),'missing':json.dumps(['Les données proviennent du moteur ; vérifier les preuves de l’offre et le dossier avant dépôt']),
-            'state':o.get('statut','trouvée'),'source_status':'unverified'})
-    docs=[{'id':f['id'],'job_id':None,'kind':f['kind'],'content':'# '+f['name']+'\n\nFichier créé par le moteur : '+f['path'],'state':'blocked' if f.get('validation') and not f['validation']['valid'] else 'draft','created':f['created'],'filename':f['name']} for f in source['files']]
+    projected=project(source)
     memory=[{'id':'m-'+str(m['id']),'category':'reference','content':m['contenu'],'source':m.get('source','utilisateur'),'status':m.get('statut','declared'),'created':0,'updated':0} for m in source['memory']]
-    task_agents={'research':'jobs','application':'applications','padel':'editor'}
-    tasks=[{'id':t['id'],'agent':task_agents[t['kind']],'kind':t['kind'],'payload':t['payload'],'state':t['state'],'attempts':t['attempts'],'max_attempts':3,'created':t['created'],'result':json.dumps(t['result'],ensure_ascii=False),'error':t['error'],'dependency':None} for t in source['tasks']]
-    return {'agents':AGENTS,'memory':memory,'jobs':jobs,'documents':docs,'tasks':tasks,'messages':[{**m,'session':'main'} for m in source['messages']],
+    return {**projected,'memory':memory,'messages':[{**m,'session':'main'} for m in source['messages']],
         'reports':source['reports'],'batches':[],'actions':[],'mail':[],
-        'mandates':store.rows('SELECT * FROM mandates'),'audit':store.rows('SELECT * FROM audit ORDER BY id DESC LIMIT 30'),
+        'mandates':store.rows('SELECT * FROM mandates'),'audit':source.get('events',[]),
         'schedules':[{'id':'daily-jobs','enabled':0}],
         'config':{**{k:store.config().get(k) for k in ('model','voice','voice_provider','voice_id','elevenlabs_enabled','elevenlabs_max_chars')},'pilot':True}}
 
