@@ -37,3 +37,40 @@ def validate_generated_pdf(path,expected_language=None):
         if cv and ('Professional experience' not in text or 'Education' not in text):raise ValueError('CV attendu en anglais')
         if not cv and ('Subject' not in text or any(x in text for x in ('Madame, Monsieur','Veuillez agréer'))):raise ValueError('Lettre attendue en anglais')
     return {'file':path.name,'pages':len(reader.pages),'cv_numbers_verified':cv,'language_checked':expected_language,'sha256':__import__('hashlib').sha256(path.read_bytes()).hexdigest()}
+
+
+def preserve_reference_languages(cv,reference):
+    """Tailoring translates labels, never changes approved reference levels."""
+    import copy
+    cv=copy.deepcopy(cv)
+    names={
+        'français':{'fr':'Français','en':'French','es':'Francés','pt':'Francês'},
+        'anglais':{'fr':'Anglais','en':'English','es':'Inglés','pt':'Inglês'},
+        'portugais':{'fr':'Portugais','en':'Portuguese','es':'Portugués','pt':'Português'},
+        'espagnol':{'fr':'Espagnol','en':'Spanish','es':'Español','pt':'Espanhol'},
+    }
+    languages=[]
+    for item in (reference or {}).get('langues',[]):
+        label=item.get('langue','');level=item.get('niveau','')
+        match=re.search(r'\b[ABC][12]\+?',level.upper())
+        if match:level=match.group()
+        elif any(w in level.casefold() for w in ('matern','native','natif')):
+            level={'fr':'Langue maternelle','en':'Native','es':'Nativo','pt':'Nativo'}.get(cv.get('langue'),'Native')
+        languages.append({'langue':names.get(label.casefold(),{}).get(cv.get('langue'),label),'niveau':level})
+    if languages:cv['langues']=languages
+    return cv
+
+
+def normalize_letter_date(letter,today=None):
+    import datetime
+    today=today or datetime.date.today()
+    months={
+        'en':'January February March April May June July August September October November December'.split(),
+        'fr':'janvier février mars avril mai juin juillet août septembre octobre novembre décembre'.split(),
+        'es':'enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre'.split(),
+        'pt':'janeiro fevereiro março abril maio junho julho agosto setembro outubro novembro dezembro'.split(),
+    }
+    language=letter.get('langue','fr');city=(letter.get('ville_date') or 'Paris,').split(',')[0].strip()
+    month=months.get(language,months['fr'])[today.month-1]
+    date=f'{today.day} de {month} de {today.year}' if language in ('es','pt') else f'{today.day} {month} {today.year}'
+    return {**letter,'ville_date':f'{city}, {date}'}

@@ -305,8 +305,14 @@ class MoteurClaudeCode:
                 outils)
         value=extraire_objet_json(texte)
         if is_cv:
-            from integration.document_validation import validate_cv_numbers
+            from integration.document_validation import validate_cv_numbers,preserve_reference_languages
+            if not pdf:
+                from agents.stockage import charger_cv
+                value=preserve_reference_languages(value,charger_cv(Path(__file__).resolve().parent/'mon_cv.pdf'))
             validate_cv_numbers(value,pdf)
+        if 'ville_date' in schema.get('properties',{}):
+            from integration.document_validation import normalize_letter_date
+            value=normalize_letter_date(value)
         return value
 
     def rechercher_web(self, consigne: str, systeme: str = "", max_recherches: int = 15) -> str:
