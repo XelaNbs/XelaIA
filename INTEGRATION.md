@@ -70,7 +70,7 @@ le processus 8765. La version antérieure reste accessible sur son port habituel
 
 ## Vérification et confidentialité
 
-36 tests automatisés passent : concurrence SQLite, import, signatures et logique
+43 tests automatisés passent : concurrence SQLite, import, signatures et logique
 des agents, refus des autres cerveaux/clés API, authentification HTTP, séparation
 des PDF entre missions, chiffres et déduplication. Le test navigateur vérifie la
 séparation des cookies entre 8765 et 8767, les pages et l’affichage mobile.
@@ -117,3 +117,13 @@ non connectés/désactivés et sont indiqués comme tels dans l’interface.
 La proposition de parallélisme et de reprise sur quota demeure non appliquée.
 Son ancien diff visait `3f339e3` ; il devra être rebasé avant une future validation.
 Les modifications présentes conservent une seule file d’exécution.
+
+### Identité et essais vocaux
+
+Le prénom d’usage est une préférence explicitement confirmée, prioritaire sur le
+CV, les souvenirs et la transcription. Les salutations simples sont construites
+depuis ce réglage ; la réponse et le texte transmis à la synthèse corrigent les
+variantes erronées connues. Les anciens échanges de tests sont conservés mais
+exclus du contexte actif au moyen de `engine_turn_flags`. L’effacement du chat
+nettoie aussi ces marqueurs pour empêcher la réutilisation accidentelle d’identifiants.
+Le prénom se règle dans Connexions et ne peut pas être changé par la dictée.
