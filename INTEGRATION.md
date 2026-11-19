@@ -39,7 +39,8 @@ interruption pendant une génération peut conduire à régénérer son dossier.
 
 La routine du pilote est désactivée. Le fichier LaunchAgent Claude recherché
 n’était pas présent lors de la vérification. La programmation de l’installation
-8765 reste donc la seule routine active pendant le pilote. Le remplacement de
+8765 dépend de son processus. Le pilote ne garantit aucune routine récurrente
+active et l’affiche explicitement ; aucune seconde routine n’est activée. Le remplacement de
 8765 et le transfert de cette routine ne sont pas effectués par ce pilote.
 
 ## Documents et limites
@@ -69,7 +70,7 @@ le processus 8765. La version antérieure reste accessible sur son port habituel
 
 ## Vérification et confidentialité
 
-17 tests automatisés passent : concurrence SQLite, import, signatures et logique
+36 tests automatisés passent : concurrence SQLite, import, signatures et logique
 des agents, refus des autres cerveaux/clés API, authentification HTTP, séparation
 des PDF entre missions, chiffres et déduplication. Le test navigateur vérifie la
 séparation des cookies entre 8765 et 8767, les pages et l’affichage mobile.
@@ -87,3 +88,32 @@ Le hook local `.githooks/pre-commit` exécute ce contrôle. `.env`, le CV origin
 le profil, les données, les candidatures, les contenus, SQLite, les jetons et les
 fichiers audio sont exclus. Un clone neuf doit activer le hook avec
 `git config core.hooksPath .githooks` avant de travailler avec des données réelles.
+
+## Correction du 19 novembre : activité et résultats vérifiables
+
+L’accueil est désormais le centre d’activité : conversation vocale et saisie,
+étape courante de trois types de missions réellement branchés, derniers fichiers
+triés par date, et preuves ouvertes dans une fenêtre sur place. Le rafraîchissement
+ciblé conserve la saisie et ne reconstruit pas toute la conversation.
+
+Chaque nouvelle pièce est copiée sous `donnees/receipts/`, avec SHA-256, mission,
+offre et contrôle documentaire. Les téléchargements servent ces copies et
+vérifient leur empreinte. Une préparation sans CV et lettre vérifiables ne peut
+plus être déclarée réussie. Les étapes de modèle et de rendu sont enregistrées
+pendant l’exécution ; les annonces de travail sont rapprochées de la file réelle.
+Les questions de suivi obtiennent directement les faits du registre. Les pièces
+historiques sont explicitement distinguées des créations enregistrées en direct.
+
+Les niveaux de langue du CV adapté sont conservés depuis le CV de référence
+approuvé ; la date de la lettre est écrite dans la langue du document. Les
+contrôles techniques ne remplacent pas une relecture des affirmations du CV.
+
+Deux parcours réels ont été vérifiés depuis l’interface : préparation d’un dossier
+goFLUENT (CV/lettre PDF anglais) et délégation Padel produisant un planning avec
+trois brouillons. Aucune candidature n’a été envoyée et aucun contenu n’a été
+publié. Gmail, le dépôt de formulaires et la routine récurrente du pilote restent
+non connectés/désactivés et sont indiqués comme tels dans l’interface.
+
+La proposition de parallélisme et de reprise sur quota demeure non appliquée.
+Son ancien diff visait `3f339e3` ; il devra être rebasé avant une future validation.
+Les modifications présentes conservent une seule file d’exécution.
