@@ -5,6 +5,7 @@ import json
 import re
 import time
 from agents.stockage import connexion
+from integration import identity
 
 TURN=contextvars.ContextVar('grounded_turn',default=None)
 
@@ -38,7 +39,7 @@ def facts():
 
 
 def system_facts():
-    return ('ÉTAT RÉEL FOURNI PAR LE SERVEUR, SEULE PREUVE DU TRAVAIL :\n'+json.dumps(facts(),ensure_ascii=False)+
+    return (identity.instructions()+'ÉTAT RÉEL FOURNI PAR LE SERVEUR, SEULE PREUVE DU TRAVAIL :\n'+json.dumps(facts(),ensure_ascii=False)+
             '\nUne mise en file est planifiée. Un CV créé ne signifie pas une candidature envoyée. '
             'N’annonce aucun travail en cours si active_tasks est vide. Aucun outil de dépôt, envoi ou publication '
             'n’est connecté. Ne prétends jamais avoir postulé, envoyé, publié ni activé une routine. '
@@ -57,6 +58,7 @@ def status_question(text):
 
 
 def guarded_reply(answer,evidence):
+    answer=identity.correct(answer)
     queued=[e['result'] for e in evidence if e['result'].get('task_id')]
     if queued:
         ids=', '.join(q['task_id'][:8] for q in queued)

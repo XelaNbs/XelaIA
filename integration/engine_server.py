@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from agents import stockage
-from integration import receipts,grounding
+from integration import receipts,grounding,identity
 from integration.environment import subscription_environment,claude_binary,MODEL
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -87,14 +87,17 @@ class Runtime:
             if self.brain is None:
                 from cerveau import Cerveau
                 self.brain=Cerveau();install_dispatch(self.brain)
-                with stockage.connexion() as c:history=c.execute('SELECT role,content FROM engine_turns ORDER BY id DESC LIMIT 24').fetchall()[::-1]
-                self.brain.historique=[dict(x) for x in history]
+                self.brain.historique=[{'role':m['role'],'content':m['content']} for m in identity.history(24)]
         return self.brain
     def chat(self,text,language=None):
         if not isinstance(text,str) or not text.strip() or len(text)>10000:raise ValueError('Message invalide')
         if language and language not in ('anglais','espagnol','portugais'):raise ValueError('Langue inconnue')
         with self.chat_lock,grounding.turn(secrets.token_hex(12)) as trace:
-            if not language and grounding.status_question(text):
+            greeting=identity.direct_reply(text) if not language else None
+            if greeting:
+                answer=greeting
+                grounding.record_tool('identité_confirmée',{'state':'read','preferred_name':identity.profile()['preferred_name']})
+            elif not language and grounding.status_question(text):
                 answer=grounding.summary()
                 grounding.record_tool('consulter_registre',{'state':'read','detail':grounding.facts()})
             else:
@@ -142,7 +145,7 @@ def state():
         offers=[{'key':r['cle'],**json.loads(r['contenu'])} for r in c.execute('SELECT * FROM agent_offres')]
         memory=[dict(r) for r in c.execute('SELECT * FROM agent_memoire ORDER BY id DESC LIMIT 500')]
         tasks=[dict(r) for r in c.execute('SELECT * FROM engine_tasks ORDER BY created DESC LIMIT 100')]
-        messages=[dict(r) for r in c.execute('SELECT * FROM (SELECT * FROM engine_turns ORDER BY id DESC LIMIT 100) ORDER BY id')]
+        messages=identity.history()
         turn_evidence={r['turn_id']:json.loads(r['evidence']) for r in c.execute('SELECT * FROM engine_turn_evidence')}
         events=[dict(r) for r in c.execute('SELECT * FROM engine_task_events ORDER BY id DESC LIMIT 300')]
         context={r['offer_key']:json.loads(r['content']) for r in c.execute('SELECT * FROM engine_offer_context')}
@@ -154,7 +157,7 @@ def state():
     for offer in offers:
         extra=context.get(offer['key'],{});offer.update({k:v for k,v in extra.items() if k not in ('key','statut','dossier','maj')})
     files=receipts.files()
-    return {'offers':offers,'memory':memory,'tasks':tasks,'messages':messages,'reports':reports,'files':files,'events':events,'facts':grounding.facts()}
+    return {'offers':offers,'memory':memory,'tasks':tasks,'messages':messages,'reports':reports,'files':files,'events':events,'facts':grounding.facts(),'identity':identity.profile()}
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*a):pass
@@ -184,6 +187,7 @@ class Handler(BaseHTTPRequestHandler):
             size=int(self.headers.get('Content-Length','0'))
             if not 0<size<1000000:raise ValueError('Requête trop volumineuse ou vide')
             d=json.loads(self.rfile.read(size));path=urlsplit(self.path).path
+            if path=='/identity':return self.respond(identity.confirm(d.get('preferred_name','')))
             if path=='/chat':return self.respond(self.server.runtime.chat(d.get('text'),d.get('language')))
             if path=='/tasks':
                 key=enqueue(d['kind'],d.get('payload'),d.get('dedupe'))
@@ -201,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond({'ok':True})
             if path=='/messages/delete':
                 with self.server.runtime.chat_lock:
-                    with stockage.connexion(True) as c:c.execute('DELETE FROM engine_turns')
+                    identity.clear_history()
                     if self.server.runtime.brain:self.server.runtime.brain.historique=[]
                 return self.respond({'ok':True})
             return self.respond({'error':'Action indisponible pendant le pilote'},409)

@@ -11,6 +11,7 @@ from jarvis.core import Store,AGENTS,Blocked,now
 from jarvis.engine import Engine,ROOT_ENGINE
 sys.path.insert(0,str(ROOT_ENGINE))
 from integration.presentation import project
+from integration import identity
 
 DATA=ROOT_ENGINE/'donnees'
 os.environ['JARVIS_DATA']=str(DATA)
@@ -33,7 +34,7 @@ def ui_state(store):
     projected=project(source)
     memory=[{'id':'m-'+str(m['id']),'category':'reference','content':m['contenu'],'source':m.get('source','utilisateur'),'status':m.get('statut','declared'),'created':0,'updated':0} for m in source['memory']]
     return {**projected,'memory':memory,'messages':[{**m,'session':'main'} for m in source['messages']],
-        'reports':source['reports'],'batches':[],'actions':[],'mail':[],
+        'reports':source['reports'],'identity':source.get('identity',{}),'batches':[],'actions':[],'mail':[],
         'mandates':store.rows('SELECT * FROM mandates'),'audit':source.get('events',[]),
         'schedules':[{'id':'daily-jobs','enabled':0}],
         'config':{**{k:store.config().get(k) for k in ('model','voice','voice_provider','voice_id','elevenlabs_enabled','elevenlabs_max_chars')},'pilot':True}}
@@ -53,13 +54,18 @@ def get(self):
 
 def post(self):
     path=urllib.parse.urlsplit(self.path).path
-    intercepted={'/api/tasks','/api/memory','/api/memory/delete','/api/messages/delete','/api/schedule','/api/batches','/api/batches/approve','/api/cv','/api/import-memory','/api/gmail/profile'}
+    intercepted={'/api/identity','/api/speak','/api/tasks','/api/memory','/api/memory/delete','/api/messages/delete','/api/schedule','/api/batches','/api/batches/approve','/api/cv','/api/import-memory','/api/gmail/profile'}
     if path not in intercepted:return original_post(self)
     try:
         if not self.auth():return self.reply({'error':'Connexion requise'},401)
         expected='http://'+self.headers.get('Host','')
         if self.headers.get('Origin')!=expected or self.headers.get('X-Jarvis-CSRF')!='1':raise Blocked('Protection CSRF')
         d=self.read();engine=Engine(self.server.store)
+        if path=='/api/speak':
+            from jarvis.voice import speak
+            audio,mime=speak(self.server.store,identity.correct(str(d.get('text',''))))
+            return self.reply(audio,content_type=mime)
+        if path=='/api/identity':return self.reply(engine.call('/identity',d))
         if path=='/api/tasks':return self.reply(engine.enqueue(d['agent'],d['kind'],d.get('payload'),d.get('dedupe')))
         if path in ('/api/memory','/api/memory/delete','/api/messages/delete'):return self.reply(engine.call(path.removeprefix('/api'),d))
         raise Blocked('Pilote isolé : envois et seconde routine désactivés. Le CV maître se prépare dans le moteur.')

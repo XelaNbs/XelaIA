@@ -41,6 +41,7 @@ def connexion(write=False):
         CREATE TABLE IF NOT EXISTS engine_tool_events(id INTEGER PRIMARY KEY, request_id TEXT, tool TEXT, result TEXT, created REAL);
         CREATE TABLE IF NOT EXISTS engine_turn_evidence(turn_id INTEGER PRIMARY KEY, evidence TEXT);
         CREATE TABLE IF NOT EXISTS engine_offer_context(offer_key TEXT PRIMARY KEY, content TEXT, updated REAL);
+        CREATE TABLE IF NOT EXISTS engine_turn_flags(turn_id INTEGER PRIMARY KEY, excluded_from_context INTEGER NOT NULL DEFAULT 0, reason TEXT, created REAL);
         ''')
         if write:c.execute('BEGIN IMMEDIATE')
         yield c
